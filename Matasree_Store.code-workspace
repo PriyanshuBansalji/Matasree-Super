@@ -1,0 +1,105 @@
+{
+  "folders": [
+    {
+      "path": "matasree-backend",
+      "name": "Backend (Express.js)"
+    },
+    {
+      "path": "matasree-superstore-main",
+      "name": "Frontend (React + Vite)"
+    }
+  ],
+  "settings": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": true
+    },
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[json]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/.git": true,
+      "**/dist": true,
+      "**/.env": false
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/.git": true
+    }
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Backend - Debug",
+        "type": "node",
+        "request": "launch",
+        "program": "${workspaceFolder:Backend (Express.js)}/src/server.ts",
+        "restart": true,
+        "console": "integratedTerminal",
+        "internalConsoleOptions": "neverOpen",
+        "runtimeArgs": ["--loader", "ts-node/esm"]
+      }
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Backend: Install & Run",
+        "type": "shell",
+        "command": "npm",
+        "args": ["run", "dev"],
+        "cwd": "${workspaceFolder:Backend (Express.js)}",
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "runOptions": {
+          "runOn": "folderOpen"
+        }
+      },
+      {
+        "label": "Frontend: Install & Run",
+        "type": "shell",
+        "command": "npm",
+        "args": ["run", "dev"],
+        "cwd": "${workspaceFolder:Frontend (React + Vite)}",
+        "group": "build"
+      },
+      {
+        "label": "Backend: Build",
+        "type": "shell",
+        "command": "npm",
+        "args": ["run", "build"],
+        "cwd": "${workspaceFolder:Backend (Express.js)}",
+        "group": "build"
+      },
+      {
+        "label": "Frontend: Build",
+        "type": "shell",
+        "command": "npm",
+        "args": ["run", "build"],
+        "cwd": "${workspaceFolder:Frontend (React + Vite)}",
+        "group": "build"
+      }
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      "esbenp.prettier-vscode",
+      "dbaeumer.vscode-eslint",
+      "es7-react.react-snippets",
+      "dsznajder.es7-react-js-snippets",
+      "ms-vscode.vscode-typescript-next",
+      "MongoDB.mongodb-vscode",
+      "Thunder Client.thunder-client"
+    ]
+  }
+}

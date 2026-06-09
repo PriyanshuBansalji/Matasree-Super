@@ -60,13 +60,9 @@ const AdminOrders = () => {
     try {
       setLoading(true);
       const response = await apiClient.getAllOrders();
-      if (response?.data?.data) {
-        setOrders(
-          Array.isArray(response.data.data)
-            ? response.data.data
-            : response.data.data.orders || []
-        );
-      }
+      // Response structure: { success, data: { orders: [...], ... }, statusCode }
+      const ordersList = response?.data?.orders || [];
+      setOrders(Array.isArray(ordersList) ? ordersList : []);
     } catch (error) {
       console.error('Failed to fetch orders:', error);
       toast.error('Failed to fetch orders');

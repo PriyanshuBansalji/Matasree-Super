@@ -8,7 +8,7 @@ export const useLogin = () => {
     mutationFn: (credentials: { email: string; password: string }) =>
       apiClient.login(credentials),
     onSuccess: (response) => {
-      localStorage.setItem('authToken', response.data.token);
+      localStorage.setItem('authToken', response.data.accessToken);
       if (response.data.user) {
         localStorage.setItem('user', JSON.stringify(response.data.user));
       }
@@ -21,7 +21,7 @@ export const useRegister = () => {
     mutationFn: (data: { name: string; email: string; password: string }) =>
       apiClient.register(data),
     onSuccess: (response) => {
-      localStorage.setItem('authToken', response.data.token);
+      localStorage.setItem('authToken', response.data.accessToken);
     },
   });
 };

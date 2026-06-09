@@ -184,7 +184,7 @@ const submitPartnershipApplication = async (req, res) => {
           </div>
 
           <p>
-            <a href="${process.env.ADMIN_DASHBOARD_URL || 'http://localhost:3000/admin/dashboard'}" style="display: inline-block; background: #D4A373; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            <a href="${process.env.ADMIN_DASHBOARD_URL || 'http://localhost:8000/admin/dashboard'}" style="display: inline-block; background: #D4A373; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
               Review Application
             </a>
           </p>

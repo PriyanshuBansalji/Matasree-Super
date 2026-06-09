@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -30,16 +30,76 @@ class ApiClient {
     );
 
     // Response interceptor
-    this.client.interceptors.response.use(
-      (response) => response,
-      (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          console.error('❌ 401 Unauthorized:', error.response.data);
-          // Handle unauthorized - redirect to login
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('user');
-          window.location.href = '/login';
+    let isRefreshing = false;
+    let failedQueue: any[] = [];
+
+    const processQueue = (error: any, token: string | null = null) => {
+      failedQueue.forEach((prom) => {
+        if (error) {
+          prom.reject(error);
+        } else {
+          prom.resolve(token);
         }
+      });
+      failedQueue = [];
+    };
+
+    this.client.interceptors.response.use(
+      (response) => response.data,
+      async (error: AxiosError) => {
+        const originalRequest: any = error.config;
+
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          if (isRefreshing) {
+            return new Promise(function (resolve, reject) {
+              failedQueue.push({ resolve, reject });
+            })
+              .then((token) => {
+                originalRequest.headers['Authorization'] = 'Bearer ' + token;
+                return this.client(originalRequest);
+              })
+              .catch((err) => {
+                return Promise.reject(err);
+              });
+          }
+
+          originalRequest._retry = true;
+          isRefreshing = true;
+
+          try {
+            // Attempt to refresh token using HttpOnly Cookie
+            const refreshResponse = await axios.post(`${API_URL}/auth/refresh-token`, {}, { withCredentials: true });
+            const newAccessToken = refreshResponse.data.data.accessToken;
+
+            // Save new token
+            localStorage.setItem('authToken', newAccessToken);
+            
+            // Re-apply token and process queue
+            this.client.defaults.headers.common['Authorization'] = 'Bearer ' + newAccessToken;
+            originalRequest.headers['Authorization'] = 'Bearer ' + newAccessToken;
+            
+            processQueue(null, newAccessToken);
+            isRefreshing = false;
+
+            // Retry original request
+            return this.client(originalRequest);
+          } catch (refreshError) {
+            processQueue(refreshError, null);
+            isRefreshing = false;
+            
+            // Refresh token is expired or invalid
+            console.error('❌ Session Expired. Please log in again.');
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('user');
+            
+            // Only redirect if not already on login/register pages
+            if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
+              window.location.href = '/login?session_expired=true';
+            }
+            return Promise.reject(refreshError);
+          }
+        }
+
         return Promise.reject(error);
       }
     );
@@ -239,6 +299,19 @@ class ApiClient {
     return this.client.delete(`/admin/users/${id}`);
   }
 
+  // Password Reset endpoints
+  sendPasswordResetOtp(email: string) {
+    return this.client.post('/auth/forgot-password', { email });
+  }
+
+  verifyPasswordResetOtp(email: string, otp: string) {
+    return this.client.post('/auth/verify-reset-otp', { email, otp });
+  }
+
+  resetPassword(email: string, otp: string, newPassword: string) {
+    return this.client.post('/auth/reset-password', { email, otp, newPassword });
+  }
+
   // File upload
   uploadImage(formData: FormData) {
     return this.client.post('/products/upload/image', formData, {
@@ -248,8 +321,52 @@ class ApiClient {
     });
   }
 
+  // Payment verification
+  verifyPayment(data: { orderId: string; razorpayPaymentId: string; razorpayOrderId: string; razorpaySignature: string }) {
+    return this.client.post('/orders/verify-payment', data);
+  }
+
+  // Review endpoints
+  submitReview(data: { name: string; rating: number; comment: string; productId?: string; email?: string }) {
+    return this.client.post('/reviews/submit', data);
+  }
+
+  getApprovedReviews(params?: { limit?: number; productId?: string }) {
+    return this.client.get('/reviews/approved', { params });
+  }
+
+  getFeaturedReviews() {
+    return this.client.get('/reviews/featured');
+  }
+
+  getAllReviews(params?: any) {
+    return this.client.get('/reviews/admin/all', { params });
+  }
+
+  approveReview(id: string, data: { isApproved: boolean; isFeatured?: boolean }) {
+    return this.client.put(`/reviews/admin/${id}/approve`, data);
+  }
+
+  deleteReview(id: string) {
+    return this.client.delete(`/reviews/admin/${id}`);
+  }
+
+  // Coupon methods
+  validateCoupon(code: string, orderAmount: number) {
+    return this.client.post('/coupons/validate', { code, orderAmount });
+  }
+
+  applyCoupon(code: string, orderId: string) {
+    return this.client.post('/coupons/apply', { code, orderId });
+  }
+
+  // Newsletter subscription – generates a unique coupon for logged-in user
+  generateNewsletterCoupon() {
+    return this.client.post('/email/subscribe', {});
+  }
+
   getBaseUrl() {
-    return this.client.defaults.baseURL?.replace('/api', '') || 'http://localhost:5000';
+    return this.client.defaults.baseURL?.replace('/api', '') || 'http://localhost:5001';
   }
 
   // Generic methods

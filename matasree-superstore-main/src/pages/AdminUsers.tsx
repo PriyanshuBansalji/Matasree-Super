@@ -63,10 +63,9 @@ const AdminUsers = () => {
         page: currentPage,
         limit: 10
       });
-      if (response?.data?.data) {
-        setUsers(response.data.data.users || []);
-        setPagination(response.data.data.pagination);
-      }
+      // Response structure: { success, data: { users: [...], pagination: {...} }, statusCode }
+      setUsers(response?.data?.users || []);
+      setPagination(response?.data?.pagination);
     } catch (error) {
       console.error('Failed to fetch users:', error);
       toast.error('Failed to fetch users');

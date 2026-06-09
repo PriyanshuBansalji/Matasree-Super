@@ -1,59 +1,73 @@
 import Navbar from '@/components/Navbar';
-import HeroSection from '@/components/HeroSection';
-import TrustStrip from '@/components/TrustStrip';
-import BestSellers from '@/components/BestSellers';
-import WhyChooseMatasree from '@/components/WhyChooseMatasree';
-import OurProcess from '@/components/OurProcess';
-import CategoriesSection from '@/components/CategoriesSection';
+import Footer from '@/components/Footer';
+import CartDrawer from '@/components/CartDrawer';
+import { SmoothScroll } from '@/components/home/SmoothScroll';
+
+// Cinematic scroll-driven sections
+import { HeroParallax } from '@/components/home/HeroParallax';
+import { ProductScrollGrid } from '@/components/home/ProductScrollGrid';
+import { BrandStoryScroll } from '@/components/home/BrandStoryScroll';
+import { TrustStatsSection } from '@/components/home/TrustStatsSection';
+import { PremiumCTA } from '@/components/home/PremiumCTA';
+
+// Additional sections — all restyled with scroll effects & heritage theme
+import FeaturesSection from '@/components/FeaturesSection';
 import WhyChooseUsSection from '@/components/WhyChooseUsSection';
+import OurProcess from '@/components/OurProcess';
 import TestimonialsSection from '@/components/TestimonialsSection';
 import FAQSection from '@/components/FAQSection';
 import NewsletterSection from '@/components/NewsletterSection';
-import Footer from '@/components/Footer';
-import CartDrawer from '@/components/CartDrawer';
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main>
-        {/* 1. Hero Section - Above the fold */}
-        <HeroSection />
+    <SmoothScroll>
+      <div className="bg-brand-cream text-brand-cinnamon font-sans min-h-screen selection:bg-brand-chili selection:text-white">
+        <Navbar />
         
-        {/* 2. Trust Strip - Instant credibility */}
-        <TrustStrip />
+        <main className="overflow-x-clip">
+          {/* ━━━━ ACT 1: OPENING ━━━━ */}
+          {/* Cinematic parallax hero */}
+          <HeroParallax />
+
+          {/* Horizontal slide-in feature badges (light) */}
+          <FeaturesSection />
+
+          {/* ━━━━ ACT 2: PRODUCTS ━━━━ */}
+          {/* Bestselling products — staggered column parallax */}
+          <ProductScrollGrid />
+
+          {/* ━━━━ ACT 3: STORY & TRUST ━━━━ */}
+          {/* Brand story — scroll-driven split-screen timeline */}
+          <BrandStoryScroll />
+
+          {/* Why choose us — parallax card grid (light) */}
+          <WhyChooseUsSection />
+
+          {/* Farm to table process — staggered parallax steps + animated line */}
+          <OurProcess />
+
+          {/* ━━━━ ACT 4: SOCIAL PROOF ━━━━ */}
+          {/* Animated counters + auto-rotating testimonials (light) */}
+          <TrustStatsSection />
+
+          {/* Customer reviews with review form — parallax cards (white) */}
+          <TestimonialsSection />
+
+          {/* ━━━━ ACT 5: CONVERSION ━━━━ */}
+          {/* FAQ — alternating slide-in accordion */}
+          <FAQSection />
+
+          {/* Newsletter CTA (dark) */}
+          <NewsletterSection />
+
+          {/* Final premium CTA (dark) */}
+          <PremiumCTA />
+        </main>
         
-        {/* 3. Best Sellers - Fastest sales driver */}
-        <BestSellers />
-        
-        {/* 4. Why Choose Matasree - Differentiation */}
-        <WhyChooseMatasree />
-        
-        {/* 5. Our Process - Premium & Authenticity */}
-        <OurProcess />
-        
-        {/* 6. Product Categories - Controlled exploration */}
-        <CategoriesSection />
-        
-        {/* 7. Heritage Story - Emotional connection */}
-        <WhyChooseUsSection />
-        
-        {/* 8. Testimonials - Social proof */}
-        <TestimonialsSection />
-        
-        {/* 9. FAQ - Objection handling */}
-        <FAQSection />
-        
-        {/* 10. Newsletter - Lead capture */}
-        <NewsletterSection />
-      </main>
-      
-      {/* 11. Footer - Legitimacy check */}
-      <Footer />
-      
-      {/* Cart Drawer */}
-      <CartDrawer />
-    </div>
+        <Footer />
+        <CartDrawer />
+      </div>
+    </SmoothScroll>
   );
 };
 

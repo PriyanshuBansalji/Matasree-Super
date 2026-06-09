@@ -87,12 +87,9 @@ const AdminProducts = () => {
     try {
       setLoading(true);
       const response = await apiClient.getProducts();
-      if (response?.data?.data) {
-        const productList = Array.isArray(response.data.data)
-          ? response.data.data
-          : response.data.data.products || [];
-        setProducts(productList);
-      }
+      // Response structure after interceptor: { success, data: { products: [...], pagination: {...} }, statusCode }
+      const productList = response?.data?.products || response?.data || [];
+      setProducts(Array.isArray(productList) ? productList : []);
     } catch (error) {
       console.error('Failed to fetch products:', error);
       toast.error('Failed to fetch products');
@@ -222,8 +219,9 @@ const AdminProducts = () => {
 
       const response = await apiClient.uploadImage(formDataToSend);
 
-      if (response?.data?.data?.imageUrl) {
-        const imagePath = response.data.data.imageUrl;
+      // Response structure: { success, data: { imageUrl: '...' }, statusCode }
+      if (response?.data?.imageUrl) {
+        const imagePath = response.data.imageUrl;
         setFormData(prev => ({ ...prev, image: imagePath }));
 
         const fullUrl = getImageUrl(imagePath);

@@ -26,13 +26,30 @@ const productSchema = joi_1.default.object({
  */
 const getProducts = async (req, res) => {
     try {
-        const { search, category, minPrice, maxPrice, page = 1, limit = 12 } = req.query;
+        const { search, category, minPrice, maxPrice, page = 1, limit = 12, sort } = req.query;
         let query = {};
         if (search) {
-            query.$text = { $search: search };
+            // Use regex for partial matching (more flexible than $text index)
+            query.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } },
+                { tags: { $regex: search, $options: 'i' } },
+            ];
         }
         if (category) {
-            query.category = category;
+            // Support both ObjectId and category name
+            const mongoose = require('mongoose');
+            if (mongoose.Types.ObjectId.isValid(category)) {
+                query.category = category;
+            }
+            else {
+                // Look up category by name
+                const Category = require('../models/Category').default;
+                const cat = await Category.findOne({ name: { $regex: new RegExp(`^${category}$`, 'i') } });
+                if (cat) {
+                    query.category = cat._id;
+                }
+            }
         }
         if (minPrice || maxPrice) {
             query.price = {};
@@ -46,7 +63,12 @@ const getProducts = async (req, res) => {
             .populate('category')
             .skip(skip)
             .limit(parseInt(limit))
-            .sort({ createdAt: -1 });
+            .sort(sort === '-sold' ? { sold: -1 } :
+            sort === 'sold' ? { sold: 1 } :
+                sort === '-price' ? { price: -1 } :
+                    sort === 'price' ? { price: 1 } :
+                        sort === '-rating' ? { rating: -1 } :
+                            { createdAt: -1 });
         const total = await Product_1.default.countDocuments(query);
         res.status(200).json(new response_1.ApiResponse(true, 'Products fetched', {
             products,

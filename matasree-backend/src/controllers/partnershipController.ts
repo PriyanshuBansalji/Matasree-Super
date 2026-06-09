@@ -5,7 +5,7 @@ import { sendEmail } from '../utils/email';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 export const submitPartnershipApplication = async (
-  req: AuthenticatedRequest,
+  req: any,
   res: Response
 ) => {
   try {
@@ -217,7 +217,7 @@ export const submitPartnershipApplication = async (
           </div>
 
           <p>
-            <a href="${process.env.ADMIN_DASHBOARD_URL || 'http://localhost:3000/admin/dashboard'}" style="display: inline-block; background: #D4A373; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            <a href="${process.env.ADMIN_DASHBOARD_URL || 'http://localhost:8000/admin/dashboard'}" style="display: inline-block; background: #D4A373; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
               Review Application
             </a>
           </p>
@@ -259,7 +259,7 @@ export const submitPartnershipApplication = async (
 };
 
 export const getPartnershipApplications = async (
-  req: AuthenticatedRequest,
+  req: any,
   res: Response
 ) => {
   try {
@@ -282,7 +282,7 @@ export const getPartnershipApplications = async (
 };
 
 export const getPartnershipApplicationById = async (
-  req: AuthenticatedRequest,
+  req: any,
   res: Response
 ) => {
   try {
@@ -322,7 +322,7 @@ export const getPartnershipApplicationById = async (
 // Admin functions
 
 export const getAllPartnershipApplications = async (
-  req: AuthenticatedRequest,
+  req: any,
   res: Response
 ) => {
   try {
@@ -362,7 +362,7 @@ export const getAllPartnershipApplications = async (
 };
 
 export const updatePartnershipStatus = async (
-  req: AuthenticatedRequest,
+  req: any,
   res: Response
 ) => {
   try {

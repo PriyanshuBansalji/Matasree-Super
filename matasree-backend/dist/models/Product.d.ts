@@ -9,6 +9,7 @@ export interface IProduct {
     stock: number;
     rating: number;
     reviews: number;
+    sold?: number;
     image: string;
     images?: string[];
     weight: string;

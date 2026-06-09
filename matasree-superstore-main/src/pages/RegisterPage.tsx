@@ -233,7 +233,7 @@ const RegisterPage = () => {
       setOtpLoading(true);
       const response = await apiClient.sendEmailOtp(formData.email);
       console.log('Email OTP Response:', response.data);
-      
+
       toast({
         title: 'Email OTP Sent',
         description: `Verification code sent to ${formData.email}`,
@@ -258,7 +258,7 @@ const RegisterPage = () => {
     try {
       setOtpLoading(true);
       await apiClient.resendEmailOtp(formData.email);
-      
+
       toast({
         title: 'Email OTP Resent',
         description: `Verification code resent to ${formData.email}`,
@@ -288,36 +288,20 @@ const RegisterPage = () => {
     try {
       setOtpLoading(true);
       await apiClient.verifyEmailOtp(formData.email, otpData.emailOtp);
-      
+
       toast({
         title: 'Email Verified',
         description: 'Your email has been verified successfully',
       });
 
-      // Now send mobile OTP
-      try {
-        const formattedMobile = formData.mobile.startsWith('+91') 
-          ? formData.mobile 
-          : `+91${formData.mobile}`;
-        
-        await apiClient.sendMobileOtp(formattedMobile);
-        
-        toast({
-          title: 'Mobile OTP Sent',
-          description: `Verification code sent to +91 ${formData.mobile}`,
-        });
-        
-        setStep('mobile-otp');
-        setMobileOtpTimer(300);
-        setOtpData((prev) => ({ ...prev, mobileOtp: '' }));
-        setTimeout(() => mobileOtpRef.current?.focus(), 100);
-      } catch (mobileError: any) {
-        toast({
-          title: 'Error',
-          description: mobileError.response?.data?.message || 'Failed to send mobile OTP',
-          variant: 'destructive',
-        });
-      }
+      // BYPASS: Skip mobile OTP verification (Twilio not configured)
+      // Go directly to confirmation step
+      toast({
+        title: 'Mobile Verification Skipped',
+        description: 'Mobile verification bypassed for development',
+      });
+
+      setStep('confirmation');
     } catch (error: any) {
       setErrors((prev) => ({ ...prev, emailOtp: 'Invalid OTP. Please try again.' }));
       toast({
@@ -334,7 +318,7 @@ const RegisterPage = () => {
     try {
       setOtpLoading(true);
       await apiClient.resendMobileOtp(formData.mobile);
-      
+
       toast({
         title: 'Mobile OTP Resent',
         description: `Verification code resent to ${formData.mobile}`,
@@ -364,7 +348,7 @@ const RegisterPage = () => {
     try {
       setOtpLoading(true);
       await apiClient.verifyMobileOtp(formData.mobile, otpData.mobileOtp);
-      
+
       toast({
         title: 'Mobile Verified',
         description: 'Your mobile number has been verified successfully',
@@ -422,21 +406,21 @@ const RegisterPage = () => {
             </div>
             <span className="hidden sm:inline text-sm">Details</span>
           </div>
-          
+
           <div className={`flex items-center gap-1 sm:gap-2 ${step === 'email-otp' ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'email-otp' ? 'bg-amber-100 border-2 border-amber-600' : (step === 'mobile-otp' || step === 'confirmation') ? 'bg-green-100 border-2 border-green-600' : 'bg-gray-100'}`}>
               {(step === 'mobile-otp' || step === 'confirmation') ? <Check className="w-4 h-4 text-green-600" /> : '2'}
             </div>
             <span className="hidden sm:inline text-sm">Email</span>
           </div>
-          
+
           <div className={`flex items-center gap-1 sm:gap-2 ${step === 'mobile-otp' ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'mobile-otp' ? 'bg-amber-100 border-2 border-amber-600' : step === 'confirmation' ? 'bg-green-100 border-2 border-green-600' : 'bg-gray-100'}`}>
               {step === 'confirmation' ? <Check className="w-4 h-4 text-green-600" /> : '3'}
             </div>
             <span className="hidden sm:inline text-sm">Mobile</span>
           </div>
-          
+
           <div className={`flex items-center gap-1 sm:gap-2 ${step === 'confirmation' ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'confirmation' ? 'bg-amber-100 border-2 border-amber-600' : 'bg-gray-100'}`}>
               4
@@ -479,13 +463,12 @@ const RegisterPage = () => {
                         value={formData.name}
                         onChange={handleChange}
                         onBlur={handleBlur}
-                        className={`pl-12 py-6 border-2 transition-all ${
-                          touched.name && errors.name
+                        className={`pl-12 py-6 border-2 transition-all ${touched.name && errors.name
                             ? 'border-red-500 bg-red-50'
                             : touched.name && !errors.name
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200 hover:border-amber-300'
-                        }`}
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 hover:border-amber-300'
+                          }`}
                         disabled={isLoading || otpLoading}
                       />
                     </div>
@@ -513,13 +496,12 @@ const RegisterPage = () => {
                         value={formData.email}
                         onChange={handleChange}
                         onBlur={handleBlur}
-                        className={`pl-12 py-6 border-2 transition-all ${
-                          touched.email && errors.email
+                        className={`pl-12 py-6 border-2 transition-all ${touched.email && errors.email
                             ? 'border-red-500 bg-red-50'
                             : touched.email && !errors.email
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200 hover:border-amber-300'
-                        }`}
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 hover:border-amber-300'
+                          }`}
                         disabled={isLoading || otpLoading}
                       />
                     </div>
@@ -548,13 +530,12 @@ const RegisterPage = () => {
                         onChange={handleChange}
                         onBlur={handleBlur}
                         maxLength={10}
-                        className={`pl-12 py-6 border-2 transition-all ${
-                          touched.mobile && errors.mobile
+                        className={`pl-12 py-6 border-2 transition-all ${touched.mobile && errors.mobile
                             ? 'border-red-500 bg-red-50'
                             : touched.mobile && !errors.mobile
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200 hover:border-amber-300'
-                        }`}
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 hover:border-amber-300'
+                          }`}
                         disabled={isLoading || otpLoading}
                       />
                     </div>
@@ -582,13 +563,12 @@ const RegisterPage = () => {
                         value={formData.password}
                         onChange={handleChange}
                         onBlur={handleBlur}
-                        className={`pl-12 pr-12 py-6 border-2 transition-all ${
-                          touched.password && errors.password
+                        className={`pl-12 pr-12 py-6 border-2 transition-all ${touched.password && errors.password
                             ? 'border-red-500 bg-red-50'
                             : touched.password && !errors.password
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200 hover:border-amber-300'
-                        }`}
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 hover:border-amber-300'
+                          }`}
                         disabled={isLoading || otpLoading}
                       />
                       <button
@@ -613,9 +593,8 @@ const RegisterPage = () => {
                           {[...Array(6)].map((_, i) => (
                             <div
                               key={i}
-                              className={`h-2 flex-1 rounded-full transition-all ${
-                                i < passwordStrength ? strengthColor[passwordStrength - 1] : 'bg-gray-300'
-                              }`}
+                              className={`h-2 flex-1 rounded-full transition-all ${i < passwordStrength ? strengthColor[passwordStrength - 1] : 'bg-gray-300'
+                                }`}
                             />
                           ))}
                         </div>
@@ -676,13 +655,12 @@ const RegisterPage = () => {
                         value={formData.confirmPassword}
                         onChange={handleChange}
                         onBlur={handleBlur}
-                        className={`pl-12 pr-12 py-6 border-2 transition-all ${
-                          touched.confirmPassword && errors.confirmPassword
+                        className={`pl-12 pr-12 py-6 border-2 transition-all ${touched.confirmPassword && errors.confirmPassword
                             ? 'border-red-500 bg-red-50'
                             : touched.confirmPassword && !errors.confirmPassword && formData.confirmPassword
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200 hover:border-amber-300'
-                        }`}
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 hover:border-amber-300'
+                          }`}
                         disabled={isLoading || otpLoading}
                       />
                       <button

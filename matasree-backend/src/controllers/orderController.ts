@@ -17,7 +17,7 @@ const createOrderSchema = Joi.object({
 /**
  * Create an order
  */
-export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
+export const createOrder = async (req: any, res: Response) => {
   try {
     const { error, value } = createOrderSchema.validate(req.body);
     if (error) {
@@ -122,7 +122,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response) => {
 /**
  * Verify Razorpay payment
  */
-export const verifyPayment = async (req: AuthenticatedRequest, res: Response) => {
+export const verifyPayment = async (req: any, res: Response) => {
   try {
     const { orderId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
 
@@ -167,7 +167,7 @@ export const verifyPayment = async (req: AuthenticatedRequest, res: Response) =>
 /**
  * Get user's orders
  */
-export const getOrders = async (req: AuthenticatedRequest, res: Response) => {
+export const getOrders = async (req: any, res: Response) => {
   try {
     const orders = await Order.find({ userId: req.user?.userId })
       .sort({ createdAt: -1 })
@@ -182,7 +182,7 @@ export const getOrders = async (req: AuthenticatedRequest, res: Response) => {
 /**
  * Get order by ID
  */
-export const getOrderById = async (req: AuthenticatedRequest, res: Response) => {
+export const getOrderById = async (req: any, res: Response) => {
   try {
     const order = await Order.findOne({
       _id: req.params.id,
@@ -202,7 +202,7 @@ export const getOrderById = async (req: AuthenticatedRequest, res: Response) => 
 /**
  * Get all orders (Admin)
  */
-export const getAllOrders = async (req: AuthenticatedRequest, res: Response) => {
+export const getAllOrders = async (req: any, res: Response) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
     let query: any = {};
@@ -240,7 +240,7 @@ export const getAllOrders = async (req: AuthenticatedRequest, res: Response) => 
 /**
  * Update order status (Admin)
  */
-export const updateOrderStatus = async (req: AuthenticatedRequest, res: Response) => {
+export const updateOrderStatus = async (req: any, res: Response) => {
   try {
     const { orderstatus } = req.body;
 

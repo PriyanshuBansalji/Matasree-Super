@@ -33,6 +33,11 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+/**
+ * User Model - Enhanced for OAuth + Local Auth
+ * Supports Google, GitHub, and email/password authentication
+ * Role-based access control: admin | customer
+ */
 const mongoose_1 = __importStar(require("mongoose"));
 const userSchema = new mongoose_1.Schema({
     name: {
@@ -52,9 +57,9 @@ const userSchema = new mongoose_1.Schema({
     },
     password: {
         type: String,
-        required: [true, 'Please provide a password'],
         minlength: 6,
         select: false,
+        // Password not required for OAuth users
     },
     phone: {
         type: String,
@@ -69,6 +74,26 @@ const userSchema = new mongoose_1.Schema({
         type: Boolean,
         default: false,
     },
+    avatar: {
+        type: String,
+    },
+    // OAuth provider tracking
+    provider: {
+        type: String,
+        enum: ['local', 'google', 'github'],
+        default: 'local',
+    },
+    providerId: {
+        type: String,
+        sparse: true,
+    },
+    isEmailVerified: {
+        type: Boolean,
+        default: false,
+    },
 }, { timestamps: true });
+// Indexes for performance
+userSchema.index({ provider: 1, providerId: 1 });
+userSchema.index({ role: 1 });
 exports.default = mongoose_1.default.model('User', userSchema);
 //# sourceMappingURL=User.js.map

@@ -11,13 +11,13 @@ const CartDrawer = () => {
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-foreground/60 backdrop-blur-sm z-50 animate-fade-in"
         onClick={() => setCartOpen(false)}
       />
-      
+
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-background z-50 shadow-2xl flex flex-col animate-slide-in-right">
+      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-background z-50 shadow-2xl flex flex-col animate-slide-in-right" data-lenis-prevent>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border bg-gradient-to-r from-primary/5 to-accent/5">
           <div className="flex items-center gap-3">
@@ -29,9 +29,9 @@ const CartDrawer = () => {
               <p className="text-sm text-muted-foreground">{items.length} items</p>
             </div>
           </div>
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setCartOpen(false)}
             className="rounded-full hover:bg-destructive/10 hover:text-destructive"
           >
@@ -47,7 +47,7 @@ const CartDrawer = () => {
               <span>Add <strong>₹{499 - totalPrice()}</strong> more for free shipping!</span>
             </div>
             <div className="mt-2 h-2 bg-primary/20 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-gradient-spice rounded-full transition-all duration-500"
                 style={{ width: `${Math.min((totalPrice() / 499) * 100, 100)}%` }}
               />
@@ -73,8 +73,8 @@ const CartDrawer = () => {
             </div>
           ) : (
             items.map((item, index) => (
-              <div 
-                key={item.id} 
+              <div
+                key={item.id}
                 className="flex gap-4 bg-card rounded-2xl p-4 shadow-soft border border-border/50 animate-slide-up"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
@@ -148,9 +148,11 @@ const CartDrawer = () => {
                 </span>
               </div>
             </div>
-            <Button className="w-full bg-gradient-spice hover:opacity-90 text-white font-semibold py-6 rounded-xl shadow-lg group">
-              Proceed to Checkout
-              <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+            <Button asChild className="w-full bg-gradient-spice hover:opacity-90 text-white font-semibold py-6 rounded-xl shadow-lg group">
+              <Link to="/checkout" onClick={() => setCartOpen(false)}>
+                Proceed to Checkout
+                <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+              </Link>
             </Button>
             <Button
               variant="ghost"

@@ -15,7 +15,8 @@ const OrdersPage = () => {
   const orders = Array.isArray(ordersData?.data?.data) ? ordersData.data.data : ordersData?.data?.data?.orders || [];
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    const token = localStorage.getItem('authToken');
+    if (!isAuthenticated && !token) {
       navigate('/login');
     }
   }, [isAuthenticated, navigate]);

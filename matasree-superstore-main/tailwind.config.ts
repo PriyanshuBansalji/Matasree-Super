@@ -53,7 +53,15 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Custom spice colors
+        // Brand colors (Premium D2C FMCG)
+        brand: {
+          chili: "#C0392B",
+          spice: "#E67E22",
+          turmeric: "#F4D03F",
+          cinnamon: "#6E2C00",
+          cream: "#FFF9F4",
+        },
+        // Custom spice colors (legacy)
         turmeric: "hsl(var(--turmeric))",
         saffron: "hsl(var(--saffron))",
         chili: "hsl(var(--chili))",

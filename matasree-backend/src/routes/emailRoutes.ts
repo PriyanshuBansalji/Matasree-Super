@@ -1,6 +1,10 @@
 import express, { Router, Request, Response } from 'express';
 import nodemailer from 'nodemailer';
 import { validationResult, body } from 'express-validator';
+import Coupon from '../models/Coupon';
+import User from '../models/User';
+import { generateUniqueCode } from './couponRoutes';
+import { verifyToken, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -12,19 +16,6 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASSWORD,
   },
 });
-
-// Email validation middleware
-const validateEmail = [
-  body('email')
-    .isEmail()
-    .withMessage('Please provide a valid email address')
-    .normalizeEmail(),
-  body('name')
-    .optional()
-    .trim()
-    .isLength({ min: 2 })
-    .withMessage('Name must be at least 2 characters'),
-];
 
 // Contact form validation middleware
 const validateContact = [
@@ -57,21 +48,73 @@ const validateContact = [
     .withMessage('Please provide a valid phone number'),
 ];
 
-// Subscribe to newsletter
-router.post('/subscribe', validateEmail, async (req: Request, res: Response) => {
+// Subscribe to newsletter — requires login, uses logged-in user's email ONLY
+router.post('/subscribe', verifyToken, async (req: any, res: Response) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    // Get the authenticated user's email from the database (not from request body)
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Please login first' });
     }
 
-    const { email, name } = req.body;
+    const dbUser = await User.findById(userId);
+    if (!dbUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
-    // Send welcome email to subscriber
+    const email = dbUser.email.toLowerCase();
+    const name = dbUser.name || req.body.name || 'Valued Customer';
+
+    // Check if this user or email already has a newsletter coupon
+    const existingCoupon = await Coupon.findOne({
+      $or: [
+        { email: email.toLowerCase() },
+        { userId: userId }
+      ],
+      source: 'newsletter'
+    });
+    
+    if (existingCoupon) {
+      if (existingCoupon.isUsed) {
+        return res.status(400).json({
+          success: false,
+          message: 'You have already used a newsletter coupon',
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        message: 'You have already generated your 10% off code!',
+        code: existingCoupon.code,
+      });
+    }
+
+    // Generate unique code (unambiguous characters only)
+    let code: string;
+    let attempts = 0;
+    do {
+      code = generateUniqueCode('MS10');
+      attempts++;
+    } while (await Coupon.findOne({ code }) && attempts < 5);
+
+    // Create coupon: 10% off, single use, 30-day expiry, max ₹200 discount
+    const coupon = await Coupon.create({
+      code,
+      email: email.toLowerCase(),
+      userId: userId, // Ensure coupon is tightly bound to this user
+      discountType: 'percentage',
+      discountValue: 10,
+      minOrderAmount: 199,
+      maxDiscount: 200,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      source: 'newsletter',
+      isUsed: false,
+    });
+
+    // Send welcome email to CUSTOMER with their unique coupon code
     const welcomeMailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
-      subject: '🎉 Welcome to Matasree Super - Your 10% Discount Code Inside!',
+      subject: '🎉 Welcome to Matasree Super - Your Exclusive 10% Discount Code Inside!',
       html: `
         <!DOCTYPE html>
         <html>
@@ -82,13 +125,15 @@ router.post('/subscribe', validateEmail, async (req: Request, res: Response) => 
             .header { text-align: center; color: white; margin-bottom: 30px; }
             .header h1 { font-size: 28px; margin: 0; font-family: 'Georgia', serif; }
             .content { background: white; padding: 30px; border-radius: 8px; margin-bottom: 20px; }
-            .discount-code { background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0; font-size: 24px; font-weight: bold; letter-spacing: 2px; }
+            .discount-code { background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%); color: white; padding: 25px; border-radius: 12px; text-align: center; margin: 25px 0; font-size: 28px; font-weight: bold; letter-spacing: 4px; font-family: 'Courier New', monospace; }
+            .code-note { text-align: center; font-size: 12px; color: #888; margin-top: -15px; margin-bottom: 15px; }
             .features { margin: 20px 0; }
             .feature { margin: 15px 0; padding: 15px; background: #f9fafb; border-left: 4px solid #d4641f; border-radius: 4px; }
             .feature h3 { margin: 0 0 5px 0; color: #d4641f; }
             .feature p { margin: 0; color: #666; font-size: 14px; }
             .cta { text-align: center; margin: 30px 0; }
-            .cta-button { background: linear-gradient(135deg, #d4641f 0%, #dc851f 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; }
+            .cta-button { background: linear-gradient(135deg, #d4641f 0%, #dc851f 100%); color: white; padding: 14px 35px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; font-size: 16px; }
+            .terms { background: #fff3cd; border: 1px solid #ffc107; padding: 12px 15px; border-radius: 6px; font-size: 12px; color: #856404; margin: 15px 0; }
             .footer { text-align: center; color: white; font-size: 12px; margin-top: 20px; }
           </style>
         </head>
@@ -102,13 +147,27 @@ router.post('/subscribe', validateEmail, async (req: Request, res: Response) => 
             <div class="content">
               <p>Hello ${name || 'Valued Customer'},</p>
               
-              <p>Thank you for subscribing to Matasree Super! We're thrilled to have you join our community of spice enthusiasts.</p>
+              <p>Thank you for subscribing! Here is your <strong>exclusive, one-time</strong> discount code:</p>
               
               <div class="discount-code">
-                Your exclusive discount: WELCOME10
+                ${coupon.code}
               </div>
+              <p class="code-note">⚠️ This code is unique to you and can only be used once</p>
               
-              <p style="color: #d4641f; font-weight: bold;">Use code <strong>WELCOME10</strong> to get <strong>10% OFF</strong> your first order!</p>
+              <p style="color: #d4641f; font-weight: bold; text-align: center; font-size: 18px;">
+                Get <strong>10% OFF</strong> your first order (up to ₹200)!
+              </p>
+
+              <div class="terms">
+                <strong>Terms:</strong>
+                <ul style="margin: 5px 0; padding-left: 15px;">
+                  <li>Valid for one-time use only</li>
+                  <li>Minimum order: ₹199</li>
+                  <li>Maximum discount: ₹200</li>
+                  <li>Expires in 30 days (${new Date(coupon.expiresAt).toLocaleDateString('en-IN')})</li>
+                  <li>Cannot be combined with other offers</li>
+                </ul>
+              </div>
               
               <div class="features">
                 <div class="feature">
@@ -126,23 +185,13 @@ router.post('/subscribe', validateEmail, async (req: Request, res: Response) => 
               </div>
               
               <div class="cta">
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/products" class="cta-button">Shop Now</a>
+                <a href="${process.env.FRONTEND_URL || 'http://localhost:8000'}/products" class="cta-button">Shop Now & Use Your Code →</a>
               </div>
-              
-              <p>We'll keep you updated with:</p>
-              <ul>
-                <li>Exclusive recipes and cooking tips</li>
-                <li>Limited-time offers and discounts</li>
-                <li>New product launches</li>
-                <li>Heritage stories and traditions</li>
-              </ul>
-              
-              <p>Questions? Reply to this email or visit our <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/contact" style="color: #d4641f;">contact page</a>.</p>
             </div>
             
             <div class="footer">
               <p>&copy; 2025 Matasree Super. All rights reserved.</p>
-              <p>Old Delhi, India | Serving 10L+ customers across 500+ cities</p>
+              <p>Clement Town, Dehradun | Serving families across India</p>
             </div>
           </div>
         </body>
@@ -150,29 +199,53 @@ router.post('/subscribe', validateEmail, async (req: Request, res: Response) => 
       `,
     };
 
-    // Send notification email to admin
+    // Send notification email to ADMIN
     const adminMailOptions = {
       from: process.env.EMAIL_USER,
       to: process.env.ADMIN_EMAIL || process.env.EMAIL_USER,
-      subject: '📧 New Newsletter Subscriber',
+      subject: '📧 New Newsletter Subscriber + Coupon Generated',
       html: `
         <h2>New Newsletter Subscriber</h2>
         <p><strong>Email:</strong> ${email}</p>
         <p><strong>Name:</strong> ${name || 'Not provided'}</p>
+        <p><strong>Coupon Code:</strong> ${coupon.code}</p>
+        <p><strong>Discount:</strong> 10% (max ₹200)</p>
+        <p><strong>Expires:</strong> ${new Date(coupon.expiresAt).toLocaleDateString('en-IN')}</p>
         <p><strong>Subscribed at:</strong> ${new Date().toLocaleString()}</p>
       `,
     };
 
-    // Send both emails
-    await Promise.all([
-      transporter.sendMail(welcomeMailOptions),
-      transporter.sendMail(adminMailOptions),
-    ]);
+    // Send BOTH emails ASYNCHRONOUSLY (don't block response)
+    // Fire and forget - user gets coupon immediately, emails send in background
+    console.log(`📧 Sending newsletter emails...`);
+    console.log(`   ✉️  TO CUSTOMER: ${email}`);
+    console.log(`   ✉️  TO ADMIN: ${process.env.ADMIN_EMAIL || process.env.EMAIL_USER}`);
+    console.log(`   💝 Coupon Code: ${coupon.code}`);
+    
+    Promise.all([
+      transporter.sendMail(welcomeMailOptions).then(info => {
+        console.log(`✅ Welcome email sent to ${email}`);
+        console.log(`   Message ID: ${info.messageId}`);
+        return info;
+      }).catch(err => {
+        console.error(`❌ Failed to send welcome email to ${email}:`, err.message);
+        return null;
+      }),
+      transporter.sendMail(adminMailOptions).then(info => {
+        console.log(`✅ Admin notification sent`);
+        console.log(`   Message ID: ${info.messageId}`);
+        return info;
+      }).catch(err => {
+        console.error(`❌ Failed to send admin notification:`, err.message);
+        return null;
+      }),
+    ]).catch(err => console.error('Email sending error:', err));
 
     return res.status(200).json({
       success: true,
-      message: 'Successfully subscribed! Check your email for your 10% discount code.',
+      message: 'Successfully subscribed! Check your email for your exclusive discount code. 🎉',
       email: email,
+      code: coupon.code, // include the code!
     });
   } catch (error) {
     console.error('Newsletter subscription error:', error);
@@ -188,9 +261,9 @@ router.post('/contact', validateContact, async (req: Request, res: Response) => 
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
@@ -289,7 +362,7 @@ router.post('/contact', validateContact, async (req: Request, res: Response) => 
               
               <p>In the meantime, if you have any urgent questions, feel free to call us or visit our website.</p>
               
-              <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/contact" class="button">Visit Our Website</a>
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:8000'}/contact" class="button">Visit Our Website</a>
               
               <p>Best regards,<br><strong>Matasree Super Team</strong></p>
               
@@ -307,10 +380,15 @@ router.post('/contact', validateContact, async (req: Request, res: Response) => 
       `,
     };
 
-    await Promise.all([
-      transporter.sendMail(contactMailOptions),
-      transporter.sendMail(replyMailOptions),
-    ]);
+    // Send both emails ASYNCHRONOUSLY (don't block response)
+    Promise.all([
+      transporter.sendMail(contactMailOptions).catch(err =>
+        console.error('Failed to send contact email:', err.message)
+      ),
+      transporter.sendMail(replyMailOptions).catch(err =>
+        console.error('Failed to send reply email:', err.message)
+      ),
+    ]).catch(err => console.error('Email sending error:', err));
 
     return res.status(200).json({
       success: true,

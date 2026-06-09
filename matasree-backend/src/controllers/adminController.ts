@@ -8,7 +8,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 /**
  * Get dashboard statistics (Admin)
  */
-export const getDashboardStats = async (req: AuthenticatedRequest, res: Response) => {
+export const getDashboardStats = async (req: any, res: Response) => {
   try {
     const totalUsers = await User.countDocuments({ role: 'customer' });
     const totalOrders = await Order.countDocuments();
@@ -41,7 +41,7 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
 /**
  * Get all users (Admin)
  */
-export const getAllUsers = async (req: AuthenticatedRequest, res: Response) => {
+export const getAllUsers = async (req: any, res: Response) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -73,7 +73,7 @@ export const getAllUsers = async (req: AuthenticatedRequest, res: Response) => {
 /**
  * Get revenue analytics (Admin)
  */
-export const getRevenueAnalytics = async (req: AuthenticatedRequest, res: Response) => {
+export const getRevenueAnalytics = async (req: any, res: Response) => {
   try {
     const dailyRevenue = await Order.aggregate([
       {
@@ -98,7 +98,7 @@ export const getRevenueAnalytics = async (req: AuthenticatedRequest, res: Respon
 /**
  * Get payment summary (Admin)
  */
-export const getPaymentSummary = async (req: AuthenticatedRequest, res: Response) => {
+export const getPaymentSummary = async (req: any, res: Response) => {
   try {
     const paymentSummary = await Payment.aggregate([
       {

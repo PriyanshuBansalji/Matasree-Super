@@ -19,6 +19,44 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Matasree Super | Premium Indian Spices" />
     <meta name="twitter:description" content="Premium quality Indian spices delivered to your doorstep." />
+
+    <!-- Structured Data JSON-LD Schema (Organization & WebSite) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://matasreesuper.com/#organization",
+          "name": "Matasree Super",
+          "url": "https://matasreesuper.com",
+          "logo": "https://matasreesuper.com/logo.png",
+          "description": "Authentic, premium quality Indian spices and masalas.",
+          "telephone": "+91-XXXXXXXXXX",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "Matasree Headquarters",
+            "addressLocality": "India",
+            "addressCountry": "IN"
+          }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://matasreesuper.com/#website",
+          "url": "https://matasreesuper.com",
+          "name": "Matasree Super",
+          "publisher": {
+            "@id": "https://matasreesuper.com/#organization"
+          },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://matasreesuper.com/products?search={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        }
+      ]
+    }
+    </script>
   </head>
 
   <body>

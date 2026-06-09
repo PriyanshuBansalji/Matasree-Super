@@ -2,8 +2,8 @@ import { Star, ShoppingCart, Heart, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useCartStore } from '@/store/cartStore';
+import { useWishlistStore } from '@/store/wishlistStore';
 import { toast } from 'sonner';
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 interface ProductCardProps {
@@ -12,7 +12,8 @@ interface ProductCardProps {
 
 const ProductCard = ({ product }: ProductCardProps) => {
   const { addItem } = useCartStore();
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const { isWishlisted, toggleWishlist } = useWishlistStore();
+  const wishlisted = isWishlisted(product._id);
 
   // Helper function to construct proper image URL
   const getImageUrl = (path: string | null | undefined): string => {
@@ -21,7 +22,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
       return path;
     }
     // Hardcoded backend URL to ensure it works
-    const BACKEND_URL = 'http://localhost:5000';
+    const BACKEND_URL = 'http://localhost:5001';
     if (path.startsWith('/')) {
       return `${BACKEND_URL}${path}`;
     }
@@ -49,8 +50,16 @@ const ProductCard = ({ product }: ProductCardProps) => {
   const handleWishlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsWishlisted(!isWishlisted);
-    toast.success(isWishlisted ? 'Removed from wishlist' : 'Added to wishlist');
+    toggleWishlist({
+      id: product._id,
+      name: product.name,
+      price: product.price,
+      originalPrice: product.originalPrice,
+      image: product.image,
+      category: typeof product.category === 'string' ? product.category : product.category?.name,
+      rating: product.rating,
+    });
+    toast.success(wishlisted ? 'Removed from wishlist' : 'Added to wishlist');
   };
 
   const discount = product.originalPrice
@@ -58,7 +67,12 @@ const ProductCard = ({ product }: ProductCardProps) => {
     : 0;
 
   return (
-    <div className="group card-ornate bg-card overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:shadow-elevated h-full flex flex-col relative text-left border border-border/50">
+    <div className="group card-ornate bg-card overflow-hidden transition-all duration-500 hover:-translate-y-3 hover:shadow-elevated h-full flex flex-col relative text-left border-2 border-primary/20 hover:border-primary/60">
+      {/* Decorative corner flourish - top left */}
+      <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-primary/0 group-hover:border-primary/40 transition-colors duration-300 z-10" />
+      {/* Decorative corner flourish - top right */}
+      <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-primary/0 group-hover:border-primary/40 transition-colors duration-300 z-10" />
+
       {/* Image Container */}
       <div className="relative aspect-[3/4] overflow-hidden bg-secondary/10">
         <Link to={`/product/${product._id}`} className="block w-full h-full">
@@ -71,18 +85,24 @@ const ProductCard = ({ product }: ProductCardProps) => {
         </Link>
 
         {/* Gradient overlay on hover */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
         {/* Badges */}
         <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
           {product.isNew && (
-            <Badge className="bg-coriander hover:bg-coriander/90 text-white font-medium shadow-md border-none px-3 py-1 text-xs backdrop-blur-md bg-opacity-95">New</Badge>
+            <div className="inline-flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-green-600 to-coriander text-white text-xs font-bold rounded-full shadow-lg border border-white/30 backdrop-blur-sm">
+              <span>✨</span> NEW
+            </div>
           )}
           {product.isBestseller && (
-            <Badge className="bg-gradient-spice text-white font-medium shadow-md border-none px-3 py-1 text-xs">Bestseller</Badge>
+            <div className="inline-flex items-center gap-1 px-3 py-1.5 bg-gradient-spice text-white text-xs font-bold rounded-full shadow-lg border border-white/30 backdrop-blur-sm">
+              <span>⭐</span> BESTSELLER
+            </div>
           )}
           {discount > 0 && (
-            <Badge className="bg-chili hover:bg-chili/90 text-white font-medium shadow-md border-none px-3 py-1 text-xs">{discount}% OFF</Badge>
+            <div className="inline-flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-red-600 to-chili text-white text-xs font-bold rounded-full shadow-lg border border-white/30 backdrop-blur-sm">
+              {discount}% OFF
+            </div>
           )}
         </div>
 
@@ -91,11 +111,11 @@ const ProductCard = ({ product }: ProductCardProps) => {
           <Button
             variant="secondary"
             size="icon"
-            className={`rounded-full shadow-lg w-10 h-10 transition-all duration-300 ${isWishlisted ? 'bg-white text-chili hover:bg-red-50' : 'bg-white/90 hover:bg-white text-gray-700'
+            className={`rounded-full shadow-lg w-10 h-10 transition-all duration-300 ${wishlisted ? 'bg-white text-chili hover:bg-red-50' : 'bg-white/90 hover:bg-white text-gray-700'
               }`}
             onClick={handleWishlist}
           >
-            <Heart className={`w-5 h-5 ${isWishlisted ? 'fill-current' : ''}`} />
+            <Heart className={`w-5 h-5 ${wishlisted ? 'fill-current' : ''}`} />
           </Button>
           <Button
             variant="secondary"

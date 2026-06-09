@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, Grid3X3, LayoutList, Sparkles, Loader2, X } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -33,6 +34,7 @@ interface Product {
 }
 
 const ProductsPage = () => {
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
@@ -44,6 +46,14 @@ const ProductsPage = () => {
   // Fetch data from API
   const { data: productsData, isLoading: productsLoading } = useProducts();
   const { data: categoriesData, isLoading: categoriesLoading } = useCategories();
+
+  // Handle URL category parameter
+  useEffect(() => {
+    const categoryParam = searchParams.get('category');
+    if (categoryParam && !selectedCategories.includes(categoryParam)) {
+      setSelectedCategories([categoryParam]);
+    }
+  }, [searchParams]);
 
   const allProducts = useMemo(() => {
     if (!productsData) {
@@ -119,6 +129,22 @@ const ProductsPage = () => {
   const getCategoryName = (category: string | { _id: string; name: string; slug: string }): string => {
     return typeof category === 'string' ? category : category?.name || '';
   };
+
+  // Get product count for a category
+  const getCategoryProductCount = (categoryName: string): number => {
+    return allProducts.filter((product) => {
+      const productCategory = getCategoryName(product.category);
+      return productCategory === categoryName;
+    }).length;
+  };
+
+  // Filter categories to only show those with products
+  const categoriesWithProducts = useMemo(() => {
+    return allCategories.filter((cat: any) => {
+      const count = getCategoryProductCount(cat.name);
+      return count > 0;
+    });
+  }, [allCategories, allProducts]);
 
   // Filter and sort products
   const filteredProducts = useMemo(() => {
@@ -283,11 +309,12 @@ const ProductsPage = () => {
                     <div className="flex justify-center p-4">
                       <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                     </div>
-                  ) : allCategories.length === 0 ? (
+                  ) : categoriesWithProducts.length === 0 ? (
                     <p className="text-sm text-muted-foreground italic">No categories available</p>
                   ) : (
-                    allCategories.map((cat: any) => {
+                    categoriesWithProducts.map((cat: any) => {
                       const isSelected = selectedCategories.includes(cat.name);
+                      const productCount = getCategoryProductCount(cat.name);
                       return (
                         <div
                           key={cat._id}
@@ -297,10 +324,18 @@ const ProductsPage = () => {
                             : 'bg-secondary/30 hover:bg-secondary/60 border-transparent'
                             } border`}
                         >
-                          <span className={`text-sm font-medium transition-colors ${isSelected ? 'text-primary' : 'text-foreground/80 group-hover:text-foreground'
-                            }`}>
-                            {cat.name}
-                          </span>
+                          <div className="flex items-center gap-2 flex-1">
+                            <span className={`text-sm font-medium transition-colors ${isSelected ? 'text-primary' : 'text-foreground/80 group-hover:text-foreground'
+                              }`}>
+                              {cat.name}
+                            </span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full transition-colors ${isSelected
+                              ? 'bg-primary/20 text-primary'
+                              : 'bg-muted text-muted-foreground'
+                              }`}>
+                              {productCount}
+                            </span>
+                          </div>
                           <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isSelected ? 'border-primary bg-primary' : 'border-muted-foreground/30 bg-background'
                             }`}>
                             {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}

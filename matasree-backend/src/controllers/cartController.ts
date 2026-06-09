@@ -7,7 +7,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 /**
  * Get user's cart
  */
-export const getCart = async (req: AuthenticatedRequest, res: Response) => {
+export const getCart = async (req: any, res: Response) => {
   try {
     let cart = await Cart.findOne({ userId: req.user?.userId }).populate('items.productId');
 
@@ -24,7 +24,7 @@ export const getCart = async (req: AuthenticatedRequest, res: Response) => {
 /**
  * Add item to cart
  */
-export const addToCart = async (req: AuthenticatedRequest, res: Response) => {
+export const addToCart = async (req: any, res: Response) => {
   try {
     const { productId, quantity } = req.body;
 
@@ -70,7 +70,7 @@ export const addToCart = async (req: AuthenticatedRequest, res: Response) => {
 /**
  * Update cart item quantity
  */
-export const updateCartItem = async (req: AuthenticatedRequest, res: Response) => {
+export const updateCartItem = async (req: any, res: Response) => {
   try {
     const { productId, quantity } = req.body;
 
@@ -101,7 +101,7 @@ export const updateCartItem = async (req: AuthenticatedRequest, res: Response) =
 /**
  * Remove item from cart
  */
-export const removeFromCart = async (req: AuthenticatedRequest, res: Response) => {
+export const removeFromCart = async (req: any, res: Response) => {
   try {
     const { productId } = req.body;
 
@@ -123,7 +123,7 @@ export const removeFromCart = async (req: AuthenticatedRequest, res: Response) =
 /**
  * Clear entire cart
  */
-export const clearCart = async (req: AuthenticatedRequest, res: Response) => {
+export const clearCart = async (req: any, res: Response) => {
   try {
     await Cart.findOneAndUpdate({ userId: req.user?.userId }, { items: [] }, { new: true });
     res.status(200).json(new ApiResponse(true, 'Cart cleared'));

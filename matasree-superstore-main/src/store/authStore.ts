@@ -40,7 +40,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await apiClient.login({ email, password });
-          const { accessToken, user } = response.data.data;
+          const { accessToken, user } = response.data;
 
           console.log('🔐 Login Response:', { token: accessToken, user });
 
@@ -55,7 +55,7 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
           });
         } catch (error: any) {
-          const errorMessage = error.response?.data?.message || 'Login failed';
+          const errorMessage = error.response?.data?.message || error.message || 'Login failed';
           set({
             error: errorMessage,
             isLoading: false,
@@ -69,7 +69,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await apiClient.register({ name, email, password });
-          const { accessToken, user } = response.data.data;
+          const { accessToken, user } = response.data;
 
           console.log('📝 Register Response:', { token: accessToken, user });
 
@@ -84,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
           });
         } catch (error: any) {
-          const errorMessage = error.response?.data?.message || 'Registration failed';
+          const errorMessage = error.response?.data?.message || error.message || 'Registration failed';
           set({
             error: errorMessage,
             isLoading: false,
@@ -96,6 +96,7 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
         set({
           user: null,
           token: null,
@@ -156,3 +157,8 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+// Initialize auth IMMEDIATELY when this module loads (before any component renders)
+// This ensures isAuthenticated is correct on the very first render
+useAuthStore.getState().initializeAuth();
+

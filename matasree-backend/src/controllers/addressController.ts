@@ -18,7 +18,7 @@ const addressSchema = Joi.object({
 /**
  * Get user's addresses
  */
-export const getAddresses = async (req: AuthenticatedRequest, res: Response) => {
+export const getAddresses = async (req: any, res: Response) => {
   try {
     const addresses = await Address.find({ userId: req.user?.userId }).sort({ isDefault: -1 });
     res.status(200).json(new ApiResponse(true, 'Addresses fetched', addresses));
@@ -30,7 +30,7 @@ export const getAddresses = async (req: AuthenticatedRequest, res: Response) => 
 /**
  * Get address by ID
  */
-export const getAddressById = async (req: AuthenticatedRequest, res: Response) => {
+export const getAddressById = async (req: any, res: Response) => {
   try {
     const address = await Address.findOne({
       _id: req.params.id,
@@ -50,7 +50,7 @@ export const getAddressById = async (req: AuthenticatedRequest, res: Response) =
 /**
  * Create address
  */
-export const createAddress = async (req: AuthenticatedRequest, res: Response) => {
+export const createAddress = async (req: any, res: Response) => {
   try {
     const { error, value } = addressSchema.validate(req.body);
     if (error) {
@@ -71,7 +71,7 @@ export const createAddress = async (req: AuthenticatedRequest, res: Response) =>
 /**
  * Update address
  */
-export const updateAddress = async (req: AuthenticatedRequest, res: Response) => {
+export const updateAddress = async (req: any, res: Response) => {
   try {
     const { error, value } = addressSchema.validate(req.body, { stripUnknown: true });
     if (error) {
@@ -97,7 +97,7 @@ export const updateAddress = async (req: AuthenticatedRequest, res: Response) =>
 /**
  * Delete address
  */
-export const deleteAddress = async (req: AuthenticatedRequest, res: Response) => {
+export const deleteAddress = async (req: any, res: Response) => {
   try {
     const address = await Address.findOneAndDelete({
       _id: req.params.id,
@@ -117,7 +117,7 @@ export const deleteAddress = async (req: AuthenticatedRequest, res: Response) =>
 /**
  * Set default address
  */
-export const setDefaultAddress = async (req: AuthenticatedRequest, res: Response) => {
+export const setDefaultAddress = async (req: any, res: Response) => {
   try {
     // Remove default from all other addresses
     await Address.updateMany({ userId: req.user?.userId }, { isDefault: false });

@@ -41,7 +41,7 @@ describe('Auth Routes', () => {
 
         expect(res.status).toBe(201);
         expect(res.body.success).toBe(true);
-        expect(res.body.data).toHaveProperty('token');
+        expect(res.body.data).toHaveProperty('accessToken');
         expect(res.body.data.user).toHaveProperty('email', testUser.email);
     });
 
@@ -55,7 +55,7 @@ describe('Auth Routes', () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data).toHaveProperty('token');
+        expect(res.body.data).toHaveProperty('accessToken');
     });
 
     it('should not login with wrong password', async () => {
@@ -66,7 +66,7 @@ describe('Auth Routes', () => {
                 password: 'wrongpassword'
             });
 
-        expect(res.status).toBe(400); // Or 401 depending on implementation
+        expect(res.status).toBe(401); // Or 401 depending on implementation
         expect(res.body.success).toBe(false);
     });
 });

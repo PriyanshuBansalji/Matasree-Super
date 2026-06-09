@@ -14,7 +14,7 @@ describe('Health Check', () => {
         const res = await request(app).get('/api/health');
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.message).toBe('Server is running');
+        expect(res.body.message).toBe('Matasree API is running');
     });
 
     it('should return 404 for unknown route', async () => {

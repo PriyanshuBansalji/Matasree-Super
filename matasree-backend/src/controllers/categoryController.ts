@@ -41,7 +41,7 @@ export const getCategoryById = async (req: any, res: Response) => {
 /**
  * Create category (Admin only)
  */
-export const createCategory = async (req: AuthenticatedRequest, res: Response) => {
+export const createCategory = async (req: any, res: Response) => {
   try {
     const { error, value } = categorySchema.validate(req.body);
     if (error) {
@@ -58,7 +58,7 @@ export const createCategory = async (req: AuthenticatedRequest, res: Response) =
 /**
  * Update category (Admin only)
  */
-export const updateCategory = async (req: AuthenticatedRequest, res: Response) => {
+export const updateCategory = async (req: any, res: Response) => {
   try {
     const { error, value } = categorySchema.validate(req.body, { stripUnknown: true });
     if (error) {
@@ -80,7 +80,7 @@ export const updateCategory = async (req: AuthenticatedRequest, res: Response) =
 /**
  * Delete category (Admin only)
  */
-export const deleteCategory = async (req: AuthenticatedRequest, res: Response) => {
+export const deleteCategory = async (req: any, res: Response) => {
   try {
     const category = await Category.findByIdAndDelete(req.params.id);
 

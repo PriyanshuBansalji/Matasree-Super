@@ -29,11 +29,27 @@ export const getProducts = async (req: any, res: Response) => {
     let query: any = {};
 
     if (search) {
-      query.$text = { $search: search };
+      // Use regex for partial matching (more flexible than $text index)
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { tags: { $regex: search, $options: 'i' } },
+      ];
     }
 
     if (category) {
-      query.category = category;
+      // Support both ObjectId and category name
+      const mongoose = require('mongoose');
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        query.category = category;
+      } else {
+        // Look up category by name
+        const Category = require('../models/Category').default;
+        const cat = await Category.findOne({ name: { $regex: new RegExp(`^${category}$`, 'i') } });
+        if (cat) {
+          query.category = cat._id;
+        }
+      }
     }
 
     if (minPrice || maxPrice) {
@@ -93,7 +109,7 @@ export const getProductById = async (req: any, res: Response) => {
 /**
  * Create product (Admin only)
  */
-export const createProduct = async (req: AuthenticatedRequest, res: Response) => {
+export const createProduct = async (req: any, res: Response) => {
   try {
     const { error, value } = productSchema.validate(req.body);
     if (error) {
@@ -143,7 +159,7 @@ export const createProduct = async (req: AuthenticatedRequest, res: Response) =>
 /**
  * Update product (Admin only)
  */
-export const updateProduct = async (req: AuthenticatedRequest, res: Response) => {
+export const updateProduct = async (req: any, res: Response) => {
   try {
     const { error, value } = productSchema.validate(req.body, { stripUnknown: true });
     if (error) {
@@ -197,7 +213,7 @@ export const updateProduct = async (req: AuthenticatedRequest, res: Response) =>
 /**
  * Delete product (Admin only)
  */
-export const deleteProduct = async (req: AuthenticatedRequest, res: Response) => {
+export const deleteProduct = async (req: any, res: Response) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
 
@@ -230,7 +246,7 @@ export const getFeaturedProducts = async (req: any, res: Response) => {
 /**
  * Upload product image
  */
-export const uploadImage = async (req: AuthenticatedRequest, res: Response) => {
+export const uploadImage = async (req: any, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json(new ApiResponse(false, 'No file uploaded', null, 400));

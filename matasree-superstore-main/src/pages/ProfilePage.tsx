@@ -10,7 +10,8 @@ const ProfilePage = () => {
   const { user, isAuthenticated } = useAuthStore();
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    const token = localStorage.getItem('authToken');
+    if (!isAuthenticated && !token) {
       navigate('/login');
     }
   }, [isAuthenticated, navigate]);

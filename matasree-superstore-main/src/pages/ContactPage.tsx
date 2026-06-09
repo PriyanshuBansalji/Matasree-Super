@@ -13,7 +13,8 @@ import { apiClient } from '@/services/api';
 
 const ContactPage = () => {
   const navigate = useNavigate();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Initialize directly from localStorage so the form shows immediately when logged in
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('authToken'));
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -24,12 +25,6 @@ const ContactPage = () => {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    // Check if user is logged in
-    const authToken = localStorage.getItem('authToken');
-    setIsLoggedIn(!!authToken);
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +52,7 @@ const ContactPage = () => {
         setSubmitted(true);
         toast.success('✅ Message sent! We will get back to you soon.');
         setFormData({ name: '', email: '', phone: '', subject: '', message: '' });
-        
+
         // Reset after 5 seconds
         setTimeout(() => {
           setSubmitted(false);
@@ -106,37 +101,37 @@ const ContactPage = () => {
       </div>
 
       <Navbar />
-      
+
       <main className="container mx-auto px-4 py-20 relative z-10">
         {/* Enhanced Header with Logo and Gradient */}
         <div className="text-center mb-40 relative">
           {/* Decorative elements */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-amber-200/30 rounded-full blur-3xl -z-10" />
-          
+
           {/* Premium divider line */}
           <div className="flex justify-center items-center gap-4 mb-12">
             <div className="h-px w-16 bg-gradient-to-r from-transparent to-amber-300" />
             <div className="w-2 h-2 rounded-full bg-amber-400" />
             <div className="h-px w-16 bg-gradient-to-l from-transparent to-amber-300" />
           </div>
-          
+
           {/* Logo Section - Enhanced Premium */}
           <div className="flex justify-center mb-14 animate-fade-in">
             <div className="relative group">
               {/* Multiple gradient layers for depth */}
               <div className="absolute inset-0 bg-gradient-to-r from-amber-400 via-orange-400 to-red-400 rounded-3xl blur-3xl opacity-50 group-hover:opacity-70 transition-all duration-500 group-hover:blur-2xl -z-10" />
               <div className="absolute inset-4 bg-gradient-to-b from-amber-300/40 to-orange-300/40 rounded-3xl blur-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 -z-10" />
-              
+
               <div className="bg-white rounded-3xl p-10 shadow-2xl border-2 border-amber-100/60 group-hover:border-amber-300/100 transition-all duration-500 group-hover:shadow-3xl group-hover:shadow-amber-200/50 hover:scale-110 hover:-translate-y-3 transform">
-                <img 
-                  src={logo} 
-                  alt="Matasree Super Logo" 
+                <img
+                  src={logo}
+                  alt="Matasree Super Logo"
                   className="h-40 md:h-48 object-contain transition-transform duration-500 group-hover:scale-125"
                 />
               </div>
             </div>
           </div>
-          
+
           {/* Premium badge with animation */}
           <div className="inline-block mb-8 animate-fade-in-down" style={{ animationDelay: '0.1s' }}>
             <div className="relative group/badge">
@@ -146,20 +141,20 @@ const ContactPage = () => {
               </div>
             </div>
           </div>
-          
+
           {/* Main heading with enhanced styling */}
           <h1 className="font-serif text-6xl md:text-7xl lg:text-8xl font-black bg-gradient-to-br from-amber-900 via-orange-800 to-red-900 bg-clip-text text-transparent mt-6 mb-6 leading-tight animate-fade-in-up drop-shadow-lg">
             Let's Connect
           </h1>
-          
+
           {/* Decorative underline */}
           <div className="flex justify-center mb-8">
             <div className="h-1 w-24 bg-gradient-to-r from-transparent via-amber-500 to-transparent rounded-full" />
           </div>
-          
+
           {/* Subtitle with better hierarchy */}
           <p className="text-lg md:text-xl text-slate-700 max-w-3xl mx-auto leading-relaxed font-medium animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
-            Have questions about our premium masalas or need support? 
+            Have questions about our premium masalas or need support?
             <span className="block mt-3 text-slate-600 font-normal text-base">We're excited to hear from you and help you experience authentic flavors.</span>
           </p>
 
@@ -177,7 +172,7 @@ const ContactPage = () => {
           <div className="lg:col-span-2 relative animate-fade-in-up" style={{ animationDelay: '0.25s' }}>
             {/* Premium gradient background */}
             <div className="absolute -inset-1 bg-gradient-to-r from-amber-200 via-orange-200 to-red-200 rounded-3xl blur-2xl opacity-40 -z-10 group-hover:opacity-60 transition-all duration-500" />
-            
+
             <div className="bg-white backdrop-blur-xl rounded-3xl p-12 border-2 border-amber-100/60 shadow-2xl hover:shadow-3xl transition-all duration-500 hover:border-amber-200/100">
               {/* Check if user is logged in */}
               {!isLoggedIn ? (
@@ -213,130 +208,130 @@ const ContactPage = () => {
               ) : (
                 // Form for logged-in users
                 <>
-              {/* Form header with divider */}
-              <div className="mb-10 pb-8 border-b-2 border-amber-100/40">
-                <h2 className="font-serif text-5xl font-bold bg-gradient-to-r from-amber-900 to-orange-800 bg-clip-text text-transparent mb-3">Send us a Message</h2>
-                <p className="text-slate-600 text-lg font-medium">We'll respond within 24 hours</p>
-              </div>
-              
-              {submitted ? (
-                // Success state - Enhanced with animations
-                <div className="bg-gradient-to-br from-green-50 via-emerald-50 to-green-50 border-2 border-green-400 rounded-2xl p-14 text-center animate-scale-in">
-                  <div className="w-24 h-24 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg animate-bounce border-2 border-green-300">
-                    <CheckCircle className="w-12 h-12 text-green-600 animate-scale-in" />
+                  {/* Form header with divider */}
+                  <div className="mb-10 pb-8 border-b-2 border-amber-100/40">
+                    <h2 className="font-serif text-5xl font-bold bg-gradient-to-r from-amber-900 to-orange-800 bg-clip-text text-transparent mb-3">Send us a Message</h2>
+                    <p className="text-slate-600 text-lg font-medium">We'll respond within 24 hours</p>
                   </div>
-                  <h3 className="text-4xl font-bold bg-gradient-to-r from-green-900 to-emerald-800 bg-clip-text text-transparent mb-4">Message Sent Successfully!</h3>
-                  <p className="text-green-700 mb-5 leading-relaxed text-lg font-medium">
-                    Thank you for reaching out. Our team will get back to you within 24 hours with all the information you need.
-                  </p>
-                  <p className="text-sm text-green-700 bg-green-100/70 rounded-xl px-5 py-4 inline-block border border-green-300">
-                    ✓ Confirmation sent to <strong className="font-bold">{formData.email}</strong>
-                  </p>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-7">
-                  {error && (
-                    <div className="bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 rounded-lg p-6 flex gap-3 animate-slide-in-down shadow-sm">
-                      <div className="w-6 h-6 rounded-full bg-red-300 flex items-center justify-center flex-shrink-0 mt-0.5 font-bold text-red-700 text-sm">!</div>
-                      <p className="text-red-700 font-semibold text-base">{error}</p>
+
+                  {submitted ? (
+                    // Success state - Enhanced with animations
+                    <div className="bg-gradient-to-br from-green-50 via-emerald-50 to-green-50 border-2 border-green-400 rounded-2xl p-14 text-center animate-scale-in">
+                      <div className="w-24 h-24 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg animate-bounce border-2 border-green-300">
+                        <CheckCircle className="w-12 h-12 text-green-600 animate-scale-in" />
+                      </div>
+                      <h3 className="text-4xl font-bold bg-gradient-to-r from-green-900 to-emerald-800 bg-clip-text text-transparent mb-4">Message Sent Successfully!</h3>
+                      <p className="text-green-700 mb-5 leading-relaxed text-lg font-medium">
+                        Thank you for reaching out. Our team will get back to you within 24 hours with all the information you need.
+                      </p>
+                      <p className="text-sm text-green-700 bg-green-100/70 rounded-xl px-5 py-4 inline-block border border-green-300">
+                        ✓ Confirmation sent to <strong className="font-bold">{formData.email}</strong>
+                      </p>
                     </div>
+                  ) : (
+                    <form onSubmit={handleSubmit} className="space-y-7">
+                      {error && (
+                        <div className="bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 rounded-lg p-6 flex gap-3 animate-slide-in-down shadow-sm">
+                          <div className="w-6 h-6 rounded-full bg-red-300 flex items-center justify-center flex-shrink-0 mt-0.5 font-bold text-red-700 text-sm">!</div>
+                          <p className="text-red-700 font-semibold text-base">{error}</p>
+                        </div>
+                      )}
+
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div className="group/input">
+                          <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
+                            Full Name *
+                          </label>
+                          <Input
+                            required
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            placeholder="Your name"
+                            disabled={loading}
+                            className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 group-focus-within/input:bg-white shadow-sm"
+                          />
+                        </div>
+                        <div className="group/input">
+                          <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
+                            Email Address *
+                          </label>
+                          <Input
+                            type="email"
+                            required
+                            value={formData.email}
+                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                            placeholder="your@email.com"
+                            disabled={loading}
+                            className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 group-focus-within/input:bg-white shadow-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div className="group/input">
+                          <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
+                            Phone Number
+                          </label>
+                          <Input
+                            type="tel"
+                            value={formData.phone}
+                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                            placeholder="+91 98765 43210"
+                            disabled={loading}
+                            className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 group-focus-within/input:bg-white shadow-sm"
+                          />
+                        </div>
+                        <div className="group/input">
+                          <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
+                            Subject *
+                          </label>
+                          <Input
+                            required
+                            value={formData.subject}
+                            onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                            placeholder="How can we help?"
+                            disabled={loading}
+                            className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 group-focus-within/input:bg-white shadow-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="group/input">
+                        <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
+                          Message *
+                        </label>
+                        <Textarea
+                          required
+                          rows={6}
+                          value={formData.message}
+                          onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                          placeholder="Tell us more about your inquiry..."
+                          disabled={loading}
+                          className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 resize-none group-focus-within/input:bg-white shadow-sm"
+                        />
+                      </div>
+
+                      <Button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 hover:from-amber-700 hover:via-orange-700 hover:to-red-700 text-white font-bold py-8 rounded-xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 group text-lg border-0 relative overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-white/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                        {loading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-5 h-5 mr-2 group-hover:translate-x-1 transition-transform" />
+                            Send Message
+                            <ArrowRight className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                          </>
+                        )}
+                      </Button>
+                    </form>
                   )}
-
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="group/input">
-                      <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
-                        Full Name *
-                      </label>
-                      <Input
-                        required
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Your name"
-                        disabled={loading}
-                        className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 group-focus-within/input:bg-white shadow-sm"
-                      />
-                    </div>
-                    <div className="group/input">
-                      <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
-                        Email Address *
-                      </label>
-                      <Input
-                        type="email"
-                        required
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        placeholder="your@email.com"
-                        disabled={loading}
-                        className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 group-focus-within/input:bg-white shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="group/input">
-                      <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
-                        Phone Number
-                      </label>
-                      <Input
-                        type="tel"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        placeholder="+91 98765 43210"
-                        disabled={loading}
-                        className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 group-focus-within/input:bg-white shadow-sm"
-                      />
-                    </div>
-                    <div className="group/input">
-                      <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
-                        Subject *
-                      </label>
-                      <Input
-                        required
-                        value={formData.subject}
-                        onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                        placeholder="How can we help?"
-                        disabled={loading}
-                        className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 group-focus-within/input:bg-white shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="group/input">
-                    <label className="block text-sm font-bold text-amber-900 mb-3 group-focus-within/input:text-orange-700 transition-colors">
-                      Message *
-                    </label>
-                    <Textarea
-                      required
-                      rows={6}
-                      value={formData.message}
-                      onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                      placeholder="Tell us more about your inquiry..."
-                      disabled={loading}
-                      className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-amber-200/40 focus:border-amber-500 focus:ring-0 focus:bg-white rounded-xl placeholder:text-slate-400 transition-all hover:border-amber-300/70 resize-none group-focus-within/input:bg-white shadow-sm"
-                    />
-                  </div>
-
-                  <Button 
-                    type="submit" 
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 hover:from-amber-700 hover:via-orange-700 hover:to-red-700 text-white font-bold py-8 rounded-xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 group text-lg border-0 relative overflow-hidden"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-5 h-5 mr-2 group-hover:translate-x-1 transition-transform" />
-                        Send Message
-                        <ArrowRight className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-                      </>
-                    )}
-                  </Button>
-                </form>
-              )}
                 </>
               )}
             </div>
@@ -368,7 +363,7 @@ const ContactPage = () => {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Enhanced Contact Info Cards */}
             {contactInfo.map((info, index) => (
-              <div 
+              <div
                 key={info.title}
                 className="group relative animate-fade-in-up"
                 style={{ animationDelay: `${index * 0.1}s` }}
@@ -400,26 +395,26 @@ const ContactPage = () => {
 
           <div className="grid md:grid-cols-3 gap-8 mb-20">
             {[
-              { 
-                icon: '🌟', 
-                title: '10,000+ Happy Customers', 
+              {
+                icon: '🌟',
+                title: '10,000+ Happy Customers',
                 desc: 'Trusted by families across India for authentic masalas',
                 color: 'from-amber-100 to-orange-100'
               },
-              { 
-                icon: '✅', 
-                title: '100% Authentic Quality', 
+              {
+                icon: '✅',
+                title: '100% Authentic Quality',
                 desc: 'Pure, handpicked spices with zero additives',
                 color: 'from-green-100 to-emerald-100'
               },
-              { 
-                icon: '🚚', 
-                title: 'Fast & Safe Delivery', 
+              {
+                icon: '🚚',
+                title: 'Fast & Safe Delivery',
                 desc: 'Delivered within 2-3 days across India',
                 color: 'from-blue-100 to-cyan-100'
               }
             ].map((item, idx) => (
-              <div 
+              <div
                 key={idx}
                 className="group relative animate-fade-in-up"
                 style={{ animationDelay: `${idx * 0.1}s` }}
@@ -442,7 +437,7 @@ const ContactPage = () => {
               { label: '24x7', value: 'Support' },
               { label: 'Pan India', value: 'Delivery' }
             ].map((stat, idx) => (
-              <div 
+              <div
                 key={idx}
                 className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200/60 rounded-xl p-6 text-center hover:border-amber-400 hover:shadow-lg transition-all duration-500 hover:-translate-y-1 group animate-fade-in-up"
                 style={{ animationDelay: `${idx * 0.08}s` }}
@@ -457,7 +452,7 @@ const ContactPage = () => {
         {/* Testimonials Section - New */}
         <div className="my-24 py-16 relative">
           <div className="absolute top-0 right-0 w-96 h-96 bg-orange-200/20 rounded-full blur-3xl -z-10" />
-          
+
           <div className="text-center mb-16 animate-fade-in-up">
             <h2 className="font-serif text-4xl md:text-5xl font-bold bg-gradient-to-r from-amber-900 to-orange-800 bg-clip-text text-transparent mb-4">What Our Customers Say</h2>
             <div className="h-1 w-20 bg-gradient-to-r from-transparent via-amber-500 to-transparent rounded-full mx-auto" />
@@ -465,26 +460,26 @@ const ContactPage = () => {
 
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { 
-                name: 'Priya Sharma', 
+              {
+                name: 'Priya Sharma',
                 text: 'Best quality masalas I\'ve ever used. The aroma is incredible!',
                 rating: 5,
                 city: 'Delhi'
               },
-              { 
-                name: 'Rajesh Kumar', 
+              {
+                name: 'Rajesh Kumar',
                 text: 'Authentic taste just like my grandmother used to make. Highly recommended!',
                 rating: 5,
                 city: 'Mumbai'
               },
-              { 
-                name: 'Anjali Patel', 
+              {
+                name: 'Anjali Patel',
                 text: 'Fast delivery, premium quality, and excellent customer service. 10/10!',
                 rating: 5,
                 city: 'Bangalore'
               }
             ].map((review, idx) => (
-              <div 
+              <div
                 key={idx}
                 className="group relative animate-fade-in-up"
                 style={{ animationDelay: `${idx * 0.1}s` }}
@@ -492,7 +487,7 @@ const ContactPage = () => {
                 <div className="absolute inset-0 bg-gradient-to-br from-amber-200/30 to-orange-200/30 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity -z-10" />
                 <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-8 border-2 border-amber-100/60 hover:border-amber-300/80 shadow-lg hover:shadow-xl transition-all duration-500 hover:-translate-y-3 group-hover:bg-white h-full relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-amber-400/20 to-orange-400/20 rounded-full -mr-10 -mt-10 group-hover:scale-150 transition-transform duration-500" />
-                  
+
                   <div className="flex gap-1 mb-4 relative z-10">
                     {[...Array(review.rating)].map((_, i) => (
                       <span key={i} className="text-xl transform group-hover:scale-125 transition-transform" style={{ transitionDelay: `${i * 50}ms` }}>⭐</span>
@@ -521,7 +516,7 @@ const ContactPage = () => {
             referrerPolicy="no-referrer-when-downgrade"
             className="group-hover:scale-105 transition-transform duration-500"
           />
-          
+
           {/* Overlay info box */}
           <div className="absolute bottom-6 left-6 right-6 bg-white/95 backdrop-blur-md rounded-2xl p-5 shadow-xl border border-amber-100/60 group-hover:shadow-2xl transition-all duration-500 z-10">
             <div className="flex items-start gap-3">

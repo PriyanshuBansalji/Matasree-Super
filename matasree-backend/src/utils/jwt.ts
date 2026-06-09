@@ -1,4 +1,5 @@
 import jwt, { JwtPayload, Secret, SignOptions } from 'jsonwebtoken';
+import crypto from 'crypto';
 
 export interface ITokenPayload extends JwtPayload {
   userId: string;
@@ -8,16 +9,19 @@ export interface ITokenPayload extends JwtPayload {
 
 export const generateAccessToken = (userId: string, email: string, role: string): string => {
   const secret: Secret = (process.env.JWT_SECRET || 'default_secret') as Secret;
-  return jwt.sign({ userId, email, role }, secret, {
-    expiresIn: (process.env.JWT_EXPIRE || '7d') as SignOptions['expiresIn'],
-  } as SignOptions);
+  const options: SignOptions = {
+    expiresIn: (process.env.JWT_EXPIRE || '7d') as any,
+  };
+  return jwt.sign({ userId, email, role }, secret, options);
 };
 
 export const generateRefreshToken = (userId: string): string => {
   const secret: Secret = (process.env.JWT_REFRESH_SECRET || 'default_refresh_secret') as Secret;
-  return jwt.sign({ userId }, secret, {
-    expiresIn: (process.env.JWT_REFRESH_EXPIRE || '30d') as SignOptions['expiresIn'],
-  } as SignOptions);
+  const options: SignOptions = {
+    expiresIn: (process.env.JWT_REFRESH_EXPIRE || '30d') as any,
+  };
+  const jti = crypto.randomBytes(16).toString('hex');
+  return jwt.sign({ userId, jti }, secret, options);
 };
 
 export const verifyAccessToken = (token: string): ITokenPayload => {

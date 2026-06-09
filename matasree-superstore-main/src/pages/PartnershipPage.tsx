@@ -63,7 +63,8 @@ const PartnershipPage = () => {
   const [citiesInput, setCitiesInput] = useState('');
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    const token = localStorage.getItem('authToken');
+    if (!isAuthenticated && !token) {
       toast.error('Please login first to apply for partnership');
       navigate('/login?redirect=/partnership');
     }
@@ -123,7 +124,7 @@ const PartnershipPage = () => {
     }
   };
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !localStorage.getItem('authToken')) {
     return null;
   }
 

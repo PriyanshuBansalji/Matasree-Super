@@ -8,6 +8,7 @@ const Order_1 = __importDefault(require("../models/Order"));
 const Payment_1 = __importDefault(require("../models/Payment"));
 const Cart_1 = __importDefault(require("../models/Cart"));
 const Address_1 = __importDefault(require("../models/Address"));
+const Product_1 = __importDefault(require("../models/Product"));
 const response_1 = require("../utils/response");
 const razorpay_1 = require("../utils/razorpay");
 const joi_1 = __importDefault(require("joi"));
@@ -89,6 +90,12 @@ const createOrder = async (req, res) => {
                 amount: totalAmount,
                 status: 'pending',
                 method: 'cod',
+            });
+        }
+        // Update product sold count and stock
+        for (const item of orderItems) {
+            await Product_1.default.findByIdAndUpdate(item.productId, {
+                $inc: { sold: item.quantity, stock: -item.quantity }
             });
         }
         // Clear cart

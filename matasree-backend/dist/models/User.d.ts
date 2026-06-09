@@ -1,3 +1,8 @@
+/**
+ * User Model - Enhanced for OAuth + Local Auth
+ * Supports Google, GitHub, and email/password authentication
+ * Role-based access control: admin | customer
+ */
 import mongoose from 'mongoose';
 export interface IUser {
     _id: mongoose.Types.ObjectId;
@@ -7,6 +12,10 @@ export interface IUser {
     phone: string;
     role: 'customer' | 'admin';
     isAdmin: boolean;
+    avatar?: string;
+    provider: 'local' | 'google' | 'github';
+    providerId?: string;
+    isEmailVerified: boolean;
     createdAt: Date;
     updatedAt: Date;
 }

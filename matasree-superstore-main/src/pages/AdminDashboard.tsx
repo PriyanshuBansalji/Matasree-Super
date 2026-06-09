@@ -29,12 +29,13 @@ const AdminDashboard = () => {
           apiClient.getRevenueAnalytics()
         ]);
 
-        if (statsResponse?.data?.data) {
-          setStats(statsResponse.data.data);
+        // Response structure after interceptor: { success, data: {...}, statusCode }
+        if (statsResponse?.data) {
+          setStats(statsResponse.data);
         }
 
-        if (analyticsResponse?.data?.data) {
-          setAnalytics(analyticsResponse.data.data);
+        if (analyticsResponse?.data) {
+          setAnalytics(analyticsResponse.data);
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error);
@@ -173,7 +174,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Quick Links */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/admin/users')}>
             <CardHeader>
               <CardTitle>Manage Users</CardTitle>
@@ -189,6 +190,15 @@ const AdminDashboard = () => {
             </CardHeader>
             <CardContent>
               <p className="text-gray-600">Add, edit, and delete products</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/admin/categories')}>
+            <CardHeader>
+              <CardTitle>Manage Categories</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600">Organize products into categories</p>
             </CardContent>
           </Card>
 

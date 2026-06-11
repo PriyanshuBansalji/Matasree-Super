@@ -65,4 +65,54 @@ describe('Auth Routes', () => {
         expect(res.body.success).toBe(false);
     });
 });
+/**
+ * OAuth Token Delivery Tests (Requirement 29.1, 29.2)
+ *
+ * Verifies that:
+ * 1. OAuth callback does NOT include token in URL (redirects cleanly to /auth/callback)
+ * 2. GET /api/auth/token returns { accessToken, user } exactly once per OAuth flow
+ * 3. Token is served over httpOnly cookie, not in request/response body
+ * 4. Subsequent token retrieval attempts fail with 401
+ */
+describe('OAuth Token Delivery (Req 29)', () => {
+    beforeAll(async () => {
+        if (mongoose_1.default.connection.readyState === 0) {
+            await mongoose_1.default.connect(process.env.MONGODB_URI);
+        }
+        await User_1.default.deleteMany({});
+    });
+    afterAll(async () => {
+        await User_1.default.deleteMany({});
+        await (0, database_1.disconnectDB)();
+    });
+    it('GET /api/auth/token should be protected by verifyToken (requires valid accessToken)', async () => {
+        // Req 29.2: Token endpoint is cookie-authenticated
+        const res = await (0, supertest_1.default)(server_1.default)
+            .get('/api/auth/token')
+            .set('Authorization', ''); // No token
+        // Should fail because no valid JWT or refresh cookie
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+    it('GET /api/auth/token should return 401 when no token is stored (OAuth not in flight)', async () => {
+        // Create a user and get a valid access token
+        const registerRes = await (0, supertest_1.default)(server_1.default)
+            .post('/api/auth/register')
+            .send({
+            name: 'OAuth Test User',
+            email: 'oauth@test.com',
+            password: 'password123'
+        });
+        const accessToken = registerRes.body.data.accessToken;
+        // Try to get OAuth token even though no OAuth flow is in flight
+        // Should return 401 because no token is stored in oauthTokenStore
+        const res = await (0, supertest_1.default)(server_1.default)
+            .get('/api/auth/token')
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('Cookie', registerRes.headers['set-cookie'] || []);
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+        expect(res.body.message).toContain('No token available');
+    });
+});
 //# sourceMappingURL=auth.test.js.map

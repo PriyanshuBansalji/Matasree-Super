@@ -4,14 +4,33 @@ import Payment from '../models/Payment';
 import Cart from '../models/Cart';
 import Address from '../models/Address';
 import Product from '../models/Product';
+import User from '../models/User';
 import { ApiResponse } from '../utils/response';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../utils/razorpay';
+import { sendOrderConfirmationEmail } from '../utils/email';
+import logger from '../config/logger';
 import Joi from 'joi';
+import { awardLoyaltyPoints, reverseLoyaltyPoints } from '../services/loyaltyService';
+import { rewardReferrer } from '../services/referralService';
+import { razorpayInstance } from '../utils/razorpay';
 
 const createOrderSchema = Joi.object({
   addressId: Joi.string().required(),
   paymentMethod: Joi.string().valid('razorpay', 'cod').required(),
+  couponCode: Joi.string().trim().uppercase().optional(),
+  discountAmount: Joi.number().min(0).optional().default(0),
+});
+
+const verifyPaymentSchema = Joi.object({
+  orderId: Joi.string().required(),
+  razorpayPaymentId: Joi.string().required(),
+  razorpayOrderId: Joi.string().required(),
+  razorpaySignature: Joi.string().required(),
+});
+
+const updateOrderStatusSchema = Joi.object({
+  orderstatus: Joi.string().valid('pending', 'confirmed', 'shipped', 'delivered', 'cancelled').required(),
 });
 
 /**
@@ -19,12 +38,15 @@ const createOrderSchema = Joi.object({
  */
 export const createOrder = async (req: any, res: Response) => {
   try {
-    const { error, value } = createOrderSchema.validate(req.body);
+    const { error, value } = createOrderSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }
 
-    const { addressId, paymentMethod } = value;
+    const { addressId, paymentMethod, couponCode, discountAmount: rawDiscount } = value;
+
+    // Ensure discountAmount is a non-negative number (clamp to 0)
+    const discountAmount = Math.max(0, Number(rawDiscount) || 0);
 
     // Get user's cart
     const cart = await Cart.findOne({ userId: req.user?.userId }).populate('items.productId');
@@ -39,10 +61,10 @@ export const createOrder = async (req: any, res: Response) => {
     }
 
     // Calculate total and prepare order items
-    let totalAmount = 0;
+    let itemsTotal = 0;
     const orderItems = cart.items.map((item: any) => {
       const itemTotal = item.price * item.quantity;
-      totalAmount += itemTotal;
+      itemsTotal += itemTotal;
       return {
         productId: item.productId._id,
         name: item.productId.name,
@@ -51,6 +73,9 @@ export const createOrder = async (req: any, res: Response) => {
         image: item.productId.image,
       };
     });
+
+    // Req 32.2, 32.3 — apply discount; totalAmount is clamped to ≥ 0
+    const totalAmount = Math.max(0, itemsTotal - discountAmount);
 
     // Generate order number
     const orderNumber = `ORD-${Date.now()}`;
@@ -61,6 +86,8 @@ export const createOrder = async (req: any, res: Response) => {
       orderNumber,
       items: orderItems,
       totalAmount,
+      ...(couponCode ? { couponCode } : {}),
+      ...(discountAmount > 0 ? { discountAmount } : {}),
       shippingAddress: {
         name: address.name,
         addressLine1: address.addressLine1,
@@ -108,14 +135,43 @@ export const createOrder = async (req: any, res: Response) => {
     // Clear cart
     await Cart.findOneAndUpdate({ userId: req.user?.userId }, { items: [] });
 
-    res.status(201).json(
+    // Send order confirmation email for COD orders
+    if (paymentMethod === 'cod') {
+      try {
+        const userDoc = await User.findById(req.user?.userId).select('email');
+        if (userDoc?.email) {
+          await sendOrderConfirmationEmail(
+            {
+              orderNumber,
+              items: orderItems.map((item: any) => ({ name: item.name, quantity: item.quantity, price: item.price })),
+              totalAmount,
+              shippingAddress: {
+                fullName: address.name,
+                addressLine1: address.addressLine1,
+                ...(address.addressLine2 ? { addressLine2: address.addressLine2 } : {}),
+                city: address.city,
+                state: address.state,
+                pincode: address.pincode,
+                phone: address.phone,
+              },
+              paymentMethod: 'cod',
+            },
+            userDoc.email
+          );
+        }
+      } catch (emailError) {
+        logger.warn('Failed to send order confirmation email for COD order:', emailError);
+      }
+    }
+
+    return res.status(201).json(
       new ApiResponse(true, 'Order created', {
         order,
         razorpayOrder: paymentMethod === 'razorpay' ? razorpayOrder : null,
       })
     );
   } catch (error: any) {
-    res.status(500).json(new ApiResponse(false, error.message || 'Failed to create order', null, 500));
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to create order', null, 500));
   }
 };
 
@@ -124,11 +180,12 @@ export const createOrder = async (req: any, res: Response) => {
  */
 export const verifyPayment = async (req: any, res: Response) => {
   try {
-    const { orderId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
-
-    if (!orderId || !razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
-      return res.status(400).json(new ApiResponse(false, 'Missing payment details', null, 400));
+    const { error, value } = verifyPaymentSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }
+
+    const { orderId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = value;
 
     // Verify signature
     const isSignatureValid = verifyRazorpaySignature(
@@ -158,9 +215,52 @@ export const verifyPayment = async (req: any, res: Response) => {
       { new: true }
     );
 
-    res.status(200).json(new ApiResponse(true, 'Payment verified successfully', order));
+    // Send order confirmation email for online payment
+    try {
+      if (order) {
+        const userDoc = await User.findById(order.userId).select('email');
+        if (userDoc?.email) {
+          await sendOrderConfirmationEmail(
+            {
+              orderNumber: (order as any).orderNumber,
+              items: (order as any).items.map((item: any) => ({ name: item.name, quantity: item.quantity, price: item.price })),
+              totalAmount: (order as any).totalAmount,
+              shippingAddress: {
+                fullName: (order as any).shippingAddress?.name || '',
+                addressLine1: (order as any).shippingAddress?.addressLine1 || '',
+                ...((order as any).shippingAddress?.addressLine2 ? { addressLine2: (order as any).shippingAddress.addressLine2 } : {}),
+                city: (order as any).shippingAddress?.city || '',
+                state: (order as any).shippingAddress?.state || '',
+                pincode: (order as any).shippingAddress?.pincode || '',
+                phone: (order as any).shippingAddress?.phone || '',
+              },
+              paymentMethod: 'razorpay',
+            },
+            userDoc.email
+          );
+        }
+      }
+    } catch (emailError) {
+      logger.warn('Failed to send order confirmation email for Razorpay order:', emailError);
+    }
+
+    // Award loyalty points for the confirmed payment (Req 10.1)
+    // Only award if points have not already been awarded for this order
+    if (order && !order.loyaltyPointsEarned) {
+      try {
+        const subtotalPaid =
+          (order.totalAmount || 0) -
+          (order.discountAmount || 0) -
+          (order.loyaltyDiscountAmount || 0);
+        await awardLoyaltyPoints(order._id, order.userId, subtotalPaid);
+      } catch (loyaltyError) {
+        logger.warn(`[orderController] Failed to award loyalty points for order ${order._id}:`, loyaltyError);
+      }
+    }
+
+    return res.status(200).json(new ApiResponse(true, 'Payment verified successfully', order));
   } catch (error: any) {
-    res.status(500).json(new ApiResponse(false, error.message || 'Payment verification failed', null, 500));
+    return res.status(500).json(new ApiResponse(false, error.message || 'Payment verification failed', null, 500));
   }
 };
 
@@ -196,6 +296,76 @@ export const getOrderById = async (req: any, res: Response) => {
     res.status(200).json(new ApiResponse(true, 'Order fetched', order));
   } catch (error: any) {
     res.status(500).json(new ApiResponse(false, error.message || 'Failed to fetch order', null, 500));
+  }
+};
+
+/**
+ * Cancel an order (Customer)
+ * Requirements: 31.1, 31.2, 31.3, 31.4, 31.5, 31.6
+ */
+export const cancelOrder = async (req: any, res: Response) => {
+  try {
+    // Find order belonging to the authenticated user (enforces ownership — 404 if not found or not owner)
+    const order = await Order.findOne({
+      _id: req.params.id,
+      userId: req.user?.userId,
+    });
+
+    if (!order) {
+      return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
+    }
+
+    // Only pending or confirmed orders can be cancelled (Req 31.1)
+    if (!['pending', 'confirmed'].includes(order.orderstatus)) {
+      return res.status(400).json(
+        new ApiResponse(false, 'Order cannot be cancelled at this stage', null, 400)
+      );
+    }
+
+    // Set order status to cancelled (Req 31.2)
+    order.orderstatus = 'cancelled';
+    await order.save();
+
+    // Restore stock for each item (Req 31.3)
+    for (const item of order.items) {
+      await Product.findByIdAndUpdate(item.productId, {
+        $inc: { stock: item.quantity },
+      });
+    }
+
+    // Reverse loyalty points if any were earned for this order (Req 31.4)
+    if (order.loyaltyPointsEarned && order.loyaltyPointsEarned > 0) {
+      try {
+        await reverseLoyaltyPoints(order._id, order.userId);
+      } catch (loyaltyError) {
+        logger.warn(
+          `[orderController] cancelOrder: Failed to reverse loyalty points for order ${order._id}:`,
+          loyaltyError
+        );
+      }
+    }
+
+    // Initiate Razorpay refund if payment was made via Razorpay and is paid (Req 31.5, 31.6)
+    if (order.paymentMethod === 'razorpay' && order.paymentStatus === 'paid') {
+      try {
+        const payment = await Payment.findOne({ orderId: order._id });
+        if (payment?.razorpayPaymentId) {
+          await razorpayInstance.payments.refund(payment.razorpayPaymentId, {
+            amount: Math.round(order.totalAmount * 100), // paise
+          });
+          await Payment.findByIdAndUpdate(payment._id, { status: 'refund_initiated' });
+        }
+      } catch (refundError) {
+        logger.warn(
+          `[orderController] cancelOrder: Failed to initiate Razorpay refund for order ${order._id}:`,
+          refundError
+        );
+      }
+    }
+
+    return res.status(200).json(new ApiResponse(true, 'Order cancelled successfully', order));
+  } catch (error: any) {
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to cancel order', null, 500));
   }
 };
 
@@ -242,10 +412,17 @@ export const getAllOrders = async (req: any, res: Response) => {
  */
 export const updateOrderStatus = async (req: any, res: Response) => {
   try {
-    const { orderstatus } = req.body;
+    const { error, value } = updateOrderStatusSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
+    }
 
-    if (!['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'].includes(orderstatus)) {
-      return res.status(400).json(new ApiResponse(false, 'Invalid order status', null, 400));
+    const { orderstatus } = value;
+
+    // Fetch the existing order first so we can check paymentMethod and current state
+    const existingOrder = await Order.findById(req.params.id);
+    if (!existingOrder) {
+      return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
     }
 
     const order = await Order.findByIdAndUpdate(
@@ -258,8 +435,27 @@ export const updateOrderStatus = async (req: any, res: Response) => {
       return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
     }
 
-    res.status(200).json(new ApiResponse(true, 'Order status updated', order));
+    // Award loyalty points when a COD order is delivered (Req 10.1)
+    // Only award if the status is transitioning to 'delivered', the order is COD,
+    // and points have not already been awarded for this order
+    if (
+      orderstatus === 'delivered' &&
+      existingOrder.paymentMethod === 'cod' &&
+      !existingOrder.loyaltyPointsEarned
+    ) {
+      try {
+        const subtotalPaid =
+          (order.totalAmount || 0) -
+          (order.discountAmount || 0) -
+          (order.loyaltyDiscountAmount || 0);
+        await awardLoyaltyPoints(order._id, order.userId, subtotalPaid);
+      } catch (loyaltyError) {
+        logger.warn(`[orderController] Failed to award loyalty points for COD order ${order._id}:`, loyaltyError);
+      }
+    }
+
+    return res.status(200).json(new ApiResponse(true, 'Order status updated', order));
   } catch (error: any) {
-    res.status(500).json(new ApiResponse(false, error.message || 'Failed to update order', null, 500));
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to update order', null, 500));
   }
 };

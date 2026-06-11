@@ -70,6 +70,7 @@ const userSchema = new mongoose_1.Schema({
         enum: ['customer', 'admin'],
         default: 'customer',
     },
+    /** @deprecated Use `role === 'admin'` for admin checks. This field is redundant with `role` and will be removed in a future release. */
     isAdmin: {
         type: Boolean,
         default: false,
@@ -90,6 +91,25 @@ const userSchema = new mongoose_1.Schema({
     isEmailVerified: {
         type: Boolean,
         default: false,
+    },
+    referralCode: {
+        type: String,
+        unique: true,
+        sparse: true,
+    },
+    loyaltyAccountId: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: 'LoyaltyAccount',
+    },
+    // Recently viewed products — sliding window of 10, ordered by viewedAt desc
+    recentlyViewed: {
+        type: [
+            {
+                productId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', required: true },
+                viewedAt: { type: Date, default: Date.now },
+            },
+        ],
+        default: [],
     },
 }, { timestamps: true });
 // Indexes for performance

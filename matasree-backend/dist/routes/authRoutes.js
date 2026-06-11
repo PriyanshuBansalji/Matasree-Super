@@ -37,6 +37,11 @@ router.get('/oauth-status', (_req, res) => {
     });
 });
 // ============================================================
+// OAUTH TOKEN RETRIEVAL (secure, one-time, cookie-authenticated)
+// ============================================================
+// Called by frontend after OAuth callback; returns access token exactly once
+router.get('/token', auth_1.verifyToken, authController_1.getOAuthToken);
+// ============================================================
 // OAUTH - GOOGLE
 // ============================================================
 const googleNotConfigured = (_req, res) => res.status(503).json({

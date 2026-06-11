@@ -1,0 +1,159 @@
+# Implementation Plan: Matasree Store Bug Fixes
+
+## Overview
+
+Apply 21 confirmed bug fixes in the prescribed sequence to avoid blocked compilation: Models → Utils → Backend Infrastructure → Controllers → Routes → Frontend → Config. All fixes use existing patterns and no new npm packages are introduced. TypeScript is used throughout.
+
+## Tasks
+
+- [x] 1. Fix Coupon model — add maxUses field
+  - [x] 1.1 Add `maxUses: number` to the `ICoupon` interface in `matasree-backend/src/models/Coupon.ts`
+    - Add `maxUses: number;` field (0 = unlimited) to the `ICoupon` interface
+    - Add `maxUses: { type: Number, default: 0, min: 0 }` to the Mongoose schema definition
+    - _Requirements: 10.1, 10.2, 10.5_
+
+- [x] 2. Add sendOrderConfirmationEmail to email utility
+  - [x] 2.1 Export `OrderConfirmationData` interface and `sendOrderConfirmationEmail` function from `matasree-backend/src/utils/email.ts`
+    - Define `OrderConfirmationData` interface with `orderNumber`, `items`, `totalAmount`, `shippingAddress`, `paymentMethod` fields
+    - Implement `sendOrderConfirmationEmail(order, recipientEmail): Promise<boolean>` using the existing `transporter`
+    - Build branded HTML template with Matasree header, items table, shipping address block, payment badge, footer
+    - "Cash on Delivery" label when `paymentMethod === 'cod'`; "Online Payment" label when `paymentMethod === 'razorpay'`
+    - Catch errors, log them, and return `false` on failure without throwing
+    - _Requirements: 3.5, 21.1, 21.2, 21.3, 21.4, 21.5_
+
+- [x] 3. Fix backend infrastructure — CORS and Cloudinary
+  - [x] 3.1 Add port 8080 origins to `allowedOrigins` in `matasree-backend/src/server.ts`
+    - Add `http://localhost:8080` and `http://127.0.0.1:8080` to the `allowedOrigins` array
+    - Update the `FRONTEND_URL` fallback default from `http://localhost:8000` to `http://localhost:8080`
+    - _Requirements: 1.1, 1.2, 1.3_
+  - [x] 3.2 Fix Cloudinary `string | undefined` type errors in `matasree-backend/src/config/cloudinary.ts`
+    - Replace the `as any` cast with `?? ''` fallback strings for all three env vars
+    - Add a `logger.warn()` when any credential is absent at runtime
+    - _Requirements: 7.1, 7.2, 7.3_
+
+- [x] 4. Fix admin controller — new user management handlers and analytics shape
+  - [x] 4.1 Add `updateUserRole` handler to `matasree-backend/src/controllers/adminController.ts`
+    - Validate that `role` is one of `"customer"` or `"admin"`; return HTTP 400 otherwise
+    - Call `User.findByIdAndUpdate` with `{ new: true }` and `select('-password')`
+    - Return HTTP 404 if user not found, HTTP 200 with updated user on success
+    - _Requirements: 9.1, 9.3, 9.4_
+  - [x] 4.2 Add `deleteUser` handler to `matasree-backend/src/controllers/adminController.ts`
+    - Call `User.findByIdAndDelete(req.params.id)`
+    - Return HTTP 404 if user not found, HTTP 200 with success message on deletion
+    - _Requirements: 9.2, 9.5_
+  - [x] 4.3 Refactor `getPaymentSummary` in `adminController.ts` to return structured shape
+    - Transform raw aggregate array into `{ totalPayments, razorpayPayments, codPayments, paymentMethods }` object
+    - `totalPayments` = sum of all `count` values; `razorpayPayments` and `codPayments` default to 0 when method absent
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+
+- [x] 5. Fix auth controller — OTP lifecycle and issueTokens type mismatch
+  - [x] 5.1 Remove premature OTP store deletion in `verifyPasswordResetOtp` in `matasree-backend/src/controllers/authController.ts`
+    - Delete the `delete passwordResetOtpStore[email]` line from the success path of `verifyPasswordResetOtp`
+    - Confirm `resetPassword` already calls `delete passwordResetOtpStore[email]` after password update (no change there)
+    - _Requirements: 8.1, 8.2, 8.3, 8.4_
+  - [x] 5.2 Fix `issueTokens` call type in `oauthCallback` in `authController.ts`
+    - Replace the outer `as any` cast with `userAgent: req.headers['user-agent'] as string | undefined`
+    - _Requirements: 6.1, 6.2_
+
+- [x] 6. Fix order controller — email integration and return statements
+  - [x] 6.1 Import `sendOrderConfirmationEmail` and `User` in `matasree-backend/src/controllers/orderController.ts`
+    - Add `import { sendOrderConfirmationEmail } from '../utils/email';` at the top
+    - Add `import User from '../models/User';` if not already imported
+    - _Requirements: 3.5_
+  - [x] 6.2 Call `sendOrderConfirmationEmail` in the COD path of `createOrder`
+    - After clearing the cart for COD orders, fetch the user's email with `User.findById(...).select('email')`
+    - Call `sendOrderConfirmationEmail` wrapped in a try/catch that logs failure with `logger.warn()` but does not throw
+    - _Requirements: 3.1, 3.3, 3.4_
+  - [x] 6.3 Call `sendOrderConfirmationEmail` in `verifyPayment` after marking order confirmed
+    - After updating payment status, fetch the user's email and the populated order
+    - Call `sendOrderConfirmationEmail` wrapped in a try/catch that logs failure but returns HTTP 200 regardless
+    - _Requirements: 3.2, 3.3, 3.4_
+  - [x] 6.4 Add `return` guards to all early-exit `res` calls in `orderController.ts`
+    - `createOrder`, `verifyPayment`, and `updateOrderStatus` — prefix every conditional `res.status(...).json(...)` with `return`
+    - _Requirements: 5.4_
+
+- [x] 7. Fix cart, category, partnership, and product controllers — missing return statements
+  - [x] 7.1 Add `return` guards and `productId` validation to `matasree-backend/src/controllers/cartController.ts`
+    - In `addToCart`: add `return` before validation failure response
+    - In `removeFromCart`: add guard `if (!productId) { return res.status(400)... }` and `return` before all conditional responses
+    - In `updateCartItem`: add `return` before all conditional responses
+    - _Requirements: 2.5, 5.2_
+  - [x] 7.2 Add `return` guards to `matasree-backend/src/controllers/categoryController.ts`
+    - `getCategoryById`, `createCategory`, `updateCategory`, `deleteCategory` — add `return` before every HTTP 400/404 response in conditional branches
+    - _Requirements: 5.3_
+  - [x] 7.3 Add `return` guards to `matasree-backend/src/controllers/partnershipController.ts`
+    - `submitPartnershipApplication`, `getPartnershipApplicationById`, `updatePartnershipStatus` — add `return` before every conditional `res.status(...)` call
+    - _Requirements: 5.5_
+  - [x] 7.4 Add `return` guards to `matasree-backend/src/controllers/productController.ts`
+    - `createProduct`, `updateProduct`, `deleteProduct` — add `return` before every early-exit `res` call in validation branches
+    - Update `getFeaturedProducts` query to use `$or: [{ isBestseller: true }, { isNewProduct: true }]` for forward compatibility
+    - _Requirements: 5.6, 18.2, 18.3, 18.4_
+
+- [x] 8. Fix admin routes — register new user management endpoints
+  - [x] 8.1 Register `PUT /users/:id/role` and `DELETE /users/:id` in `matasree-backend/src/routes/adminRoutes.ts`
+    - Add `router.put('/users/:id/role', adminController.updateUserRole);`
+    - Add `router.delete('/users/:id', adminController.deleteUser);`
+    - Confirm the existing `router.use(verifyToken, verifyAdmin)` covers both new routes automatically
+    - _Requirements: 9.1, 9.2, 9.6_
+
+- [x] 9. Fix coupon routes — ObjectId guards, return statements, and maxUses validation
+  - [x] 9.1 Add ObjectId guards and `return` statements to `POST /apply` in `matasree-backend/src/routes/couponRoutes.ts`
+    - Guard `coupon.usedOrderId` assignment: only assign when `orderId` is a non-empty string
+    - Guard `coupon.userId` assignment: only assign when `authReq.user?.userId` is defined
+    - Add `return` before every `res.status(...).json(...)` call in conditional branches
+    - _Requirements: 4.1, 4.2, 4.3_
+  - [x] 9.2 Add `return` statements to all branches in `POST /validate` in `couponRoutes.ts`
+    - Ensure every `res.status(...).json(...)` is preceded by `return`
+    - _Requirements: 4.4, 4.5_
+  - [x] 9.3 Add `maxUses` check to `POST /validate` handler
+    - After the `isUsed` check, if `coupon.maxUses > 0`, count used coupons with same code and return HTTP 400 if `usedCount >= maxUses`
+    - _Requirements: 10.3_
+  - [x] 9.4 Accept `maxUses` in `POST /admin/create` handler
+    - Destructure `maxUses` from `req.body` and pass to `Coupon.create()` with fallback `0`
+    - _Requirements: 10.4_
+
+- [x] 10. Verify product routes — confirm featured route registration order
+  - [x] 10.1 Verify `GET /featured` is registered before `GET /:id` in `matasree-backend/src/routes/productRoutes.ts`
+    - Confirm `router.get('/featured', ...)` appears before `router.get('/:id', ...)` in the file
+    - If not already in the correct order, move the featured route above the parameterised route
+    - _Requirements: 18.1_
+
+- [x] 11. Fix frontend api.ts — cart method contracts
+  - [x] 11.1 Fix `updateCartItem` method in `matasree-superstore-main/src/services/api.ts`
+    - Rename parameter from `itemId` to `productId`
+    - Change request body from `{ itemId, quantity }` to `{ productId, quantity }`
+    - _Requirements: 2.1, 12.1, 12.2, 12.3_
+  - [x] 11.2 Fix `removeFromCart` method in `api.ts`
+    - Change from `this.client.delete('/cart/remove/' + itemId)` to `this.client.post('/cart/remove', { productId })`
+    - Rename parameter from `itemId` to `productId`
+    - _Requirements: 2.2, 13.1, 13.2, 13.3_
+
+- [x] 12. Fix AddressesPage — double data unwrapping
+  - [x] 12.1 Fix `useMemo` data accessor in `matasree-superstore-main/src/pages/AddressesPage.tsx`
+    - Replace `addressesData.data?.data || addressesData.data?.addresses || addressesData.data || []` with `addressesData.data || []`
+    - The Axios response interceptor already unwraps once; `addressesData` is the `ApiResponse` object `{ success, data: [...] }`
+    - _Requirements: 15.1, 15.2, 15.3, 15.4_
+
+- [x] 13. Fix AdminAnalytics — consume structured payments shape
+  - [x] 13.1 Update the AdminAnalytics component to read structured fields from `GET /admin/analytics/payments` response
+    - Replace any `paymentsData?.reduce(...)` or array iteration with direct field reads: `totalPayments`, `razorpayPayments`, `codPayments`, `paymentMethods`
+    - Render "No payment data available" when `paymentMethods` is empty or absent
+    - _Requirements: 17.1, 17.2, 17.3_
+
+- [x] 14. Fix newsletter subscription — add auth guard to frontend component
+  - [x] 14.1 Add authentication check before calling the subscribe API in the newsletter component
+    - Read `isAuthenticated` from the auth store (or equivalent)
+    - If not authenticated, display a toast/message ("Please log in to receive your exclusive discount code") and return without calling the API
+    - Display a "Log in to subscribe" prompt for unauthenticated users in the UI
+    - _Requirements: 14.1, 14.2, 14.3, 14.4_
+
+- [x] 15. Fix CheckoutPage — address data unwrapping
+  - [x] 15.1 Fix address data accessor in `matasree-superstore-main/src/pages/CheckoutPage.tsx`
+    - Locate the `addresses` memo or variable that reads from `useAddresses` hook data
+    - Replace any double `.data.data` access with a single `.data` access to match the Axios interceptor behaviour
+    - _Requirements: 15.1, 15.2_
+
+- [x] 16. Update .env.example — document recommended FRONTEND_URL
+  - [~] 16.1 Update `matasree-backend/.env.example` to set `FRONTEND_URL=http://localhost:8080`
+    - Replace or update the existing `FRONTEND_URL` example value to `http://localhost:8080`
+    - _Requirements: 1.4_

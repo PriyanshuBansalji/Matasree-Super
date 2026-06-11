@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const nodemailer_1 = __importDefault(require("nodemailer"));
-const express_validator_1 = require("express-validator");
+const joi_1 = __importDefault(require("joi"));
 const Coupon_1 = __importDefault(require("../models/Coupon"));
 const User_1 = __importDefault(require("../models/User"));
 const couponRoutes_1 = require("./couponRoutes");
@@ -19,36 +19,17 @@ const transporter = nodemailer_1.default.createTransport({
         pass: process.env.EMAIL_PASSWORD,
     },
 });
-// Contact form validation middleware
-const validateContact = [
-    (0, express_validator_1.body)('name')
-        .trim()
-        .notEmpty()
-        .withMessage('Name is required')
-        .isLength({ min: 2 })
-        .withMessage('Name must be at least 2 characters'),
-    (0, express_validator_1.body)('email')
-        .isEmail()
-        .withMessage('Please provide a valid email address')
-        .normalizeEmail(),
-    (0, express_validator_1.body)('subject')
-        .trim()
-        .notEmpty()
-        .withMessage('Subject is required')
-        .isLength({ min: 3, max: 100 })
-        .withMessage('Subject must be between 3 and 100 characters'),
-    (0, express_validator_1.body)('message')
-        .trim()
-        .notEmpty()
-        .withMessage('Message is required')
-        .isLength({ min: 5, max: 5000 })
-        .withMessage('Message must be between 5 and 5000 characters'),
-    (0, express_validator_1.body)('phone')
+// Contact form Joi validation schema
+const contactSchema = joi_1.default.object({
+    name: joi_1.default.string().trim().min(2).max(100).required(),
+    email: joi_1.default.string().email().lowercase().required(),
+    subject: joi_1.default.string().trim().min(3).max(100).required(),
+    message: joi_1.default.string().trim().min(5).max(5000).required(),
+    phone: joi_1.default.string()
+        .pattern(/^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/)
         .optional()
-        .trim()
-        .matches(/^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/)
-        .withMessage('Please provide a valid phone number'),
-];
+        .allow(''),
+});
 // Subscribe to newsletter — requires login, uses logged-in user's email ONLY
 router.post('/subscribe', auth_1.verifyToken, async (req, res) => {
     try {
@@ -247,16 +228,13 @@ router.post('/subscribe', auth_1.verifyToken, async (req, res) => {
     }
 });
 // Contact form email
-router.post('/contact', validateContact, async (req, res) => {
+router.post('/contact', async (req, res) => {
     try {
-        const errors = (0, express_validator_1.validationResult)(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
+        const { error, value } = contactSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+        if (error) {
+            return res.status(400).json({ success: false, message: error.details[0].message });
         }
-        const { name, email, subject, message, phone } = req.body;
+        const { name, email, subject, message, phone } = value;
         const contactMailOptions = {
             from: process.env.EMAIL_USER,
             to: process.env.ADMIN_EMAIL || process.env.EMAIL_USER,

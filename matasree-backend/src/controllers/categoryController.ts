@@ -43,7 +43,7 @@ export const getCategoryById = async (req: any, res: Response) => {
  */
 export const createCategory = async (req: any, res: Response) => {
   try {
-    const { error, value } = categorySchema.validate(req.body);
+    const { error, value } = categorySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }
@@ -60,7 +60,7 @@ export const createCategory = async (req: any, res: Response) => {
  */
 export const updateCategory = async (req: any, res: Response) => {
   try {
-    const { error, value } = categorySchema.validate(req.body, { stripUnknown: true });
+    const { error, value } = categorySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }

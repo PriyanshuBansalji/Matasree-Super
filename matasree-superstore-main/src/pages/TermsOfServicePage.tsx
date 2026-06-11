@@ -2,6 +2,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
 import { FileText, CheckCircle, AlertCircle, Gavel, CheckCircle2, ArrowRight } from 'lucide-react';
+import PageHelmet from '@/components/PageHelmet';
 
 const TermsOfServicePage = () => {
   const sections = [
@@ -29,6 +30,12 @@ const TermsOfServicePage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHelmet
+        title="Terms of Service | Matasree Super Masale"
+        description="Read the Terms of Service for Matasree Super Masale — the rules and guidelines governing use of our website and services."
+        canonicalUrl="https://matasreesuper.com/terms-of-service"
+        ogType="website"
+      />
       <Navbar />
       <CartDrawer />
       

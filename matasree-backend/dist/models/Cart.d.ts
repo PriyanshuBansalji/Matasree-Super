@@ -9,6 +9,7 @@ export interface ICart {
     _id: mongoose.Types.ObjectId;
     userId: mongoose.Types.ObjectId;
     items: ICartItem[];
+    abandonmentEmailSentAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }

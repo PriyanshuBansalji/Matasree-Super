@@ -11,6 +11,7 @@ export interface ICart {
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   items: ICartItem[];
+  abandonmentEmailSentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +46,9 @@ const cartSchema = new Schema<ICart>(
         },
       },
     ],
+    abandonmentEmailSentAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );

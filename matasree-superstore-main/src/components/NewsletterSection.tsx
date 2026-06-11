@@ -17,7 +17,7 @@ const NewsletterSection = () => {
 
   const handleSubscribe = async () => {
     if (!isAuthenticated || !user) {
-      toast.error('Please login first');
+      toast.error('Please log in to receive your exclusive discount code');
       return;
     }
 
@@ -31,8 +31,8 @@ const NewsletterSection = () => {
       });
 
       setSubscribed(true);
-      if (response?.data?.code) setCouponCode(response.data.code);
-      toast.success(response?.data?.message || '🎉 Check your email for your exclusive 10% discount code!');
+      if (response?.code) setCouponCode(response.code);
+      toast.success(response?.message || '🎉 Check your email for your exclusive 10% discount code!');
     } catch (err: unknown) {
       const errorMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to subscribe. Please try again later.';
       setError(errorMessage);

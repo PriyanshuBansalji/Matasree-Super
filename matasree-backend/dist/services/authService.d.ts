@@ -7,6 +7,9 @@ import { Response } from 'express';
 /**
  * Issue new access + refresh tokens for a user
  * Stores refresh token in DB and sets HTTP-only cookie
+ *
+ * @param options.oauthFlow - When true, marks the refresh token as pending
+ *   an OAuth token exchange. The token is consumed exactly once by GET /api/auth/token.
  */
 export declare const issueTokens: (user: {
     _id: any;
@@ -15,6 +18,8 @@ export declare const issueTokens: (user: {
 }, res: Response, meta?: {
     userAgent?: string;
     ipAddress?: string;
+}, options?: {
+    oauthFlow?: boolean;
 }) => Promise<{
     accessToken: string;
     refreshToken: string;
@@ -35,7 +40,6 @@ export declare const rotateRefreshToken: (oldRefreshToken: string, res: Response
         email: string;
         role: "customer" | "admin";
         avatar: string | undefined;
-        isAdmin: boolean;
     };
 }>;
 /**

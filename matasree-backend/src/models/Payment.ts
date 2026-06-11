@@ -8,7 +8,7 @@ export interface IPayment {
   razorpayOrderId?: string;
   razorpaySignature?: string;
   amount: number;
-  status: 'pending' | 'success' | 'failed';
+  status: 'pending' | 'success' | 'failed' | 'refund_initiated';
   method: 'razorpay' | 'cod';
   createdAt: Date;
   updatedAt: Date;
@@ -35,7 +35,7 @@ const paymentSchema = new Schema<IPayment>(
     },
     status: {
       type: String,
-      enum: ['pending', 'success', 'failed'],
+      enum: ['pending', 'success', 'failed', 'refund_initiated'],
       default: 'pending',
     },
     method: {
@@ -46,5 +46,9 @@ const paymentSchema = new Schema<IPayment>(
   },
   { timestamps: true }
 );
+
+// Indexes for order and user payment lookups
+paymentSchema.index({ orderId: 1 }, { background: true });
+paymentSchema.index({ userId: 1, status: 1 }, { background: true });
 
 export default mongoose.model<IPayment>('Payment', paymentSchema);

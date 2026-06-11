@@ -41,6 +41,8 @@ const router = (0, express_1.Router)();
 router.use(auth_1.verifyToken, auth_1.verifyAdmin);
 router.get('/stats', adminController.getDashboardStats);
 router.get('/users', adminController.getAllUsers);
+router.put('/users/:id/role', adminController.updateUserRole);
+router.delete('/users/:id', adminController.deleteUser);
 router.get('/analytics/revenue', adminController.getRevenueAnalytics);
 router.get('/analytics/payments', adminController.getPaymentSummary);
 exports.default = router;

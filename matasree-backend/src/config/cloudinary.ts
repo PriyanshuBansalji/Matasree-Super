@@ -7,11 +7,19 @@ import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import logger from './logger';
 
 // Configure Cloudinary
+const cloudName = process.env.CLOUDINARY_CLOUD_NAME ?? '';
+const apiKey = process.env.CLOUDINARY_API_KEY ?? '';
+const apiSecret = process.env.CLOUDINARY_API_SECRET ?? '';
+
+if (!cloudName || !apiKey || !apiSecret) {
+  logger.warn('⚠️  One or more Cloudinary credentials are missing. Image uploads may fail.');
+}
+
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-} as any);
+  cloud_name: cloudName,
+  api_key: apiKey,
+  api_secret: apiSecret,
+});
 
 /**
  * Upload an image buffer to Cloudinary

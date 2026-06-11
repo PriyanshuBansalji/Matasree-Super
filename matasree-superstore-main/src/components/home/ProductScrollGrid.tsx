@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { useProducts } from '@/hooks/useApi';
 import { useCartStore } from '@/store/cartStore';
 import { toast } from 'sonner';
+import { ProductCardSkeleton } from '@/components/skeletons/ProductCardSkeleton';
 
 export interface CategoryProps {
   name: string;
@@ -165,9 +166,9 @@ export const ProductScrollGrid = () => {
     offset: ["start end", "end start"]
   });
 
-  const { data: productsData, isLoading } = useProducts({ limit: 6, sort: '-sold' });
+  const { data: productsData, isLoading } = useProducts({ limit: 8, sort: '-sold' });
   const products = productsData?.data?.products || productsData?.data || [];
-  const arrayProducts = Array.isArray(products) ? products.slice(0, 6) : [];
+  const arrayProducts = Array.isArray(products) ? products.slice(0, 8) : [];
 
   const titleY = useTransform(scrollYProgress, [0, 0.4], ["40%", "0%"]);
   const titleOpacity = useTransform(scrollYProgress, [0, 0.3], [0, 1]);
@@ -195,12 +196,8 @@ export const ProductScrollGrid = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-14">
           {isLoading ? (
-            [...Array(6)].map((_, i) => (
-               <div key={i} className="animate-pulse bg-white rounded-[2.5rem] p-10 border border-[#3E2314]/5 shadow-xl">
-                  <div className="w-full aspect-[4/5] bg-[#FAF7F2] rounded-3xl mb-8" />
-                  <div className="h-6 bg-[#FAF7F2] rounded w-3/4 mb-4" />
-                  <div className="h-10 bg-[#FAF7F2] rounded w-1/2" />
-               </div>
+            [...Array(8)].map((_, i) => (
+              <ProductCardSkeleton key={i} />
             ))
           ) : arrayProducts.length > 0 ? (
              arrayProducts.map((product: ProductType, index: number) => (

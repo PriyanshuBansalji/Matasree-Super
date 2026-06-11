@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/table';
 import { Plus, Pencil, Trash2, Loader2, Package, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import PageHelmet from '@/components/PageHelmet';
 
 interface Category {
     _id: string;
@@ -191,6 +192,12 @@ const AdminCategories = () => {
 
     return (
         <div className="min-h-screen bg-gray-50">
+            <PageHelmet
+                title="Admin: Categories | Matasree Super Masale"
+                description="Manage product categories on Matasree Super Masale admin panel."
+                canonicalUrl="https://matasreesuper.com/admin/categories"
+                noIndex={true}
+            />
             <Navbar />
 
             <div className="container mx-auto px-4 py-8">

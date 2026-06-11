@@ -559,3 +559,20 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(33 98% 48%);
 }
+
+/* ============= ACCESSIBLE FOCUS INDICATORS (Req 20.6) ============= */
+/* ≥ 3:1 contrast ratio, 2 px outline with 2 px offset on all focusable elements */
+*:focus-visible {
+  outline: 2px solid #b45309; /* amber-700 — sufficient contrast on white/light bg */
+  outline-offset: 2px;
+  border-radius: 2px; /* slight rounding for visual consistency */
+}
+/* Remove default outline only when focus-visible is supported */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+/* On dark backgrounds (e.g. footer, modals with dark overlay) use white outline */
+.dark *:focus-visible,
+[data-theme="dark"] *:focus-visible {
+  outline-color: #fbbf24; /* amber-400 — sufficient contrast on dark bg */
+}

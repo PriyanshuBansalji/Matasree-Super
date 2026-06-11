@@ -25,6 +25,8 @@ interface AuthState {
   initializeAuth: () => void;
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
+  /** Store accessToken + user in-memory only (no localStorage). Used by OAuth callback. */
+  setAuthInMemory: (accessToken: string, user: User) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -145,6 +147,14 @@ export const useAuthStore = create<AuthState>()(
           localStorage.removeItem('authToken');
         }
         set({ token });
+      },
+
+      /**
+       * Stores the OAuth access token and user in Zustand in-memory state only.
+       * Does NOT write to localStorage — satisfies Req 29.4.
+       */
+      setAuthInMemory: (accessToken: string, user: User) => {
+        set({ token: accessToken, user, isAuthenticated: true, error: null });
       },
     }),
     {

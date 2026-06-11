@@ -89,6 +89,19 @@ const couponSchema = new mongoose_1.Schema({
         enum: ['newsletter', 'admin', 'promotion'],
         default: 'newsletter',
     },
+    maxUses: {
+        type: Number,
+        default: 0, // 0 = unlimited
+        min: 0,
+    },
+    usageCount: {
+        type: Number,
+        default: 0,
+        min: 0,
+    },
+    categoryRestrictions: {
+        type: [String],
+    },
 }, { timestamps: true });
 // Indexes
 couponSchema.index({ email: 1, source: 1 });

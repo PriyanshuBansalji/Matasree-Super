@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Package, ChevronRight, Calendar, MapPin, DollarSign } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import PageHelmet from '@/components/PageHelmet';
 
 const OrdersPage = () => {
   const navigate = useNavigate();
@@ -38,6 +39,12 @@ const OrdersPage = () => {
 
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
+      <PageHelmet
+        title="My Orders | Matasree Super Masale"
+        description="View and track all your orders from Matasree Super Masale."
+        canonicalUrl="https://matasreesuper.com/orders"
+        noIndex={true}
+      />
       <div className="container mx-auto px-4">
         {/* Header */}
         <div className="mb-8">

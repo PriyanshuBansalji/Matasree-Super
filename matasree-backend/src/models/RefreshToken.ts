@@ -12,6 +12,8 @@ export interface IRefreshToken extends Document {
   isRevoked: boolean;
   userAgent?: string;
   ipAddress?: string;
+  /** Set to true when issued via OAuth flow; cleared after first /api/auth/token exchange */
+  oauthPending?: boolean;
   createdAt: Date;
 }
 
@@ -43,6 +45,10 @@ const refreshTokenSchema = new Schema<IRefreshToken>(
     },
     ipAddress: {
       type: String,
+    },
+    oauthPending: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

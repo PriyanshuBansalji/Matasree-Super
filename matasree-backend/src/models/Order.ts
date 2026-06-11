@@ -27,6 +27,11 @@ export interface IOrder {
   paymentStatus: 'pending' | 'paid' | 'failed';
   paymentId?: string;
   orderstatus: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+  couponCode?: string;
+  discountAmount?: number;
+  loyaltyPointsEarned?: number;
+  loyaltyPointsRedeemed?: number;
+  loyaltyDiscountAmount?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -84,8 +89,29 @@ const orderSchema = new Schema<IOrder>(
       enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'],
       default: 'pending',
     },
+    couponCode: {
+      type: String,
+    },
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    loyaltyPointsEarned: {
+      type: Number,
+    },
+    loyaltyPointsRedeemed: {
+      type: Number,
+    },
+    loyaltyDiscountAmount: {
+      type: Number,
+    },
   },
   { timestamps: true }
 );
+
+// Indexes for common query patterns
+orderSchema.index({ userId: 1, createdAt: -1 }, { background: true });
+orderSchema.index({ orderstatus: 1 }, { background: true });
 
 export default mongoose.model<IOrder>('Order', orderSchema);

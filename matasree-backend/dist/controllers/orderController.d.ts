@@ -2,11 +2,11 @@ import { Response } from 'express';
 /**
  * Create an order
  */
-export declare const createOrder: (req: any, res: Response) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const createOrder: (req: any, res: Response) => Promise<Response<any, Record<string, any>>>;
 /**
  * Verify Razorpay payment
  */
-export declare const verifyPayment: (req: any, res: Response) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const verifyPayment: (req: any, res: Response) => Promise<Response<any, Record<string, any>>>;
 /**
  * Get user's orders
  */
@@ -22,5 +22,5 @@ export declare const getAllOrders: (req: any, res: Response) => Promise<void>;
 /**
  * Update order status (Admin)
  */
-export declare const updateOrderStatus: (req: any, res: Response) => Promise<Response<any, Record<string, any>> | undefined>;
+export declare const updateOrderStatus: (req: any, res: Response) => Promise<Response<any, Record<string, any>>>;
 //# sourceMappingURL=orderController.d.ts.map

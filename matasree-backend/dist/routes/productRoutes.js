@@ -44,6 +44,11 @@ const router = (0, express_1.Router)();
 // Public routes
 router.get('/', productController.getProducts);
 router.get('/featured', productController.getFeaturedProducts);
+// Search route must be registered before /:id to avoid route shadowing
+router.get('/search', productController.searchProducts);
+// Recently Viewed routes — must be registered before /:id to avoid route shadowing
+router.get('/recently-viewed', auth_1.verifyToken, productController.getRecentlyViewed);
+router.post('/recently-viewed/:productId', auth_1.verifyToken, productController.addToRecentlyViewed);
 router.get('/:id', productController.getProductById);
 // Admin routes
 router.post('/', auth_1.verifyToken, auth_1.verifyAdmin, upload_1.default.single('image'), productController.createProduct);

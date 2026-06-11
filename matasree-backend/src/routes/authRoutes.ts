@@ -15,6 +15,7 @@ import {
   updateProfile,
   refreshToken,
   oauthCallback,
+  getOAuthToken,
   sendEmailOtp,
   verifyEmailOtp,
   resendEmailOtp,
@@ -53,6 +54,12 @@ router.get('/oauth-status', (_req, res) => {
     },
   });
 });
+
+// ============================================================
+// OAUTH TOKEN RETRIEVAL (secure, one-time, cookie-authenticated)
+// ============================================================
+// Called by frontend after OAuth callback; returns access token exactly once
+router.get('/token', verifyToken, getOAuthToken);
 
 // ============================================================
 // OAUTH - GOOGLE

@@ -173,12 +173,22 @@ class ApiClient {
     return this.client.post('/cart/add', data);
   }
 
-  updateCartItem(itemId: string, quantity: number) {
-    return this.client.put('/cart/update', { itemId, quantity });
+  updateCartItem(productId: string, quantity: number) {
+    return this.client.put('/cart/update', { productId, quantity });
   }
 
-  removeFromCart(itemId: string) {
-    return this.client.delete(`/cart/remove/${itemId}`);
+  removeFromCart(productId: string) {
+    return this.client.post('/cart/remove', { productId });
+  }
+
+  /**
+   * POST /api/cart/sync
+   * Validates client cart items against live product prices and stock.
+   * Returns { syncedItems, priceDiffs, removedItems }
+   * Requirements: 24.1, 24.2, 24.3, 24.4
+   */
+  syncCart(items: Array<{ productId: string; quantity: number; clientPrice: number }>) {
+    return this.client.post('/cart/sync', { items });
   }
 
   // Orders endpoints
@@ -287,6 +297,10 @@ class ApiClient {
     return this.client.get('/admin/analytics/revenue');
   }
 
+  getPaymentAnalytics() {
+    return this.client.get('/admin/analytics/payments');
+  }
+
   getAllUsers(params?: any) {
     return this.client.get('/admin/users', { params });
   }
@@ -365,8 +379,45 @@ class ApiClient {
     return this.client.post('/email/subscribe', {});
   }
 
+  // Recipes endpoints (Requirements: 9.2, 9.3, 16.3)
+  getRecipes(params?: { tag?: string; region?: string; page?: number }) {
+    return this.client.get('/admin/recipes', { params });
+  }
+
+  // Seasonal Banners endpoints (Requirements: 9.4, 9.5, 17.1)
+  getSeasonalBanners() {
+    return this.client.get('/admin/banners');
+  }
+
   getBaseUrl() {
     return this.client.defaults.baseURL?.replace('/api', '') || 'http://localhost:5001';
+  }
+
+  // Recently Viewed endpoints
+  getRecentlyViewed() {
+    return this.client.get('/products/recently-viewed');
+  }
+
+  addToRecentlyViewed(productId: string) {
+    return this.client.post(`/products/recently-viewed/${productId}`);
+  }
+
+  // Loyalty endpoints (Requirement 10.4)
+  getLoyaltyBalance() {
+    return this.client.get('/loyalty/balance');
+  }
+
+  redeemLoyaltyPoints(data: { pointsRequested: number; orderSubtotal: number }) {
+    return this.client.post('/loyalty/redeem', data);
+  }
+
+  // Referral endpoints (Requirement 11.5)
+  getReferralCode() {
+    return this.client.get('/referral/my-code');
+  }
+
+  getReferralHistory() {
+    return this.client.get('/referral/history');
   }
 
   // Generic methods

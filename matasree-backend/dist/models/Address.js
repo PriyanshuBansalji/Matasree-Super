@@ -71,5 +71,7 @@ const addressSchema = new mongoose_1.Schema({
         default: false,
     },
 }, { timestamps: true });
+// Index for user address lookups
+addressSchema.index({ userId: 1 }, { background: true });
 exports.default = mongoose_1.default.model('Address', addressSchema);
 //# sourceMappingURL=Address.js.map

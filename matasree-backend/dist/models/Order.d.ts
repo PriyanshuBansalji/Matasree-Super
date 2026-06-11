@@ -25,6 +25,11 @@ export interface IOrder {
     paymentStatus: 'pending' | 'paid' | 'failed';
     paymentId?: string;
     orderstatus: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+    couponCode?: string;
+    discountAmount?: number;
+    loyaltyPointsEarned?: number;
+    loyaltyPointsRedeemed?: number;
+    loyaltyDiscountAmount?: number;
     createdAt: Date;
     updatedAt: Date;
 }

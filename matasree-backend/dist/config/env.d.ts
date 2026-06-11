@@ -7,8 +7,8 @@ import { z } from 'zod';
 declare const envSchema: z.ZodObject<{
     PORT: z.ZodDefault<z.ZodString>;
     NODE_ENV: z.ZodDefault<z.ZodEnum<{
-        production: "production";
         test: "test";
+        production: "production";
         development: "development";
     }>>;
     MONGODB_URI: z.ZodString;
@@ -44,7 +44,7 @@ declare const envSchema: z.ZodObject<{
  */
 export declare const validateEnv: () => {
     PORT: string;
-    NODE_ENV: "production" | "test" | "development";
+    NODE_ENV: "test" | "production" | "development";
     MONGODB_URI: string;
     FRONTEND_URL: string;
     JWT_SECRET: string;
@@ -75,7 +75,7 @@ export declare const validateEnv: () => {
 export type EnvConfig = z.infer<typeof envSchema>;
 export declare const env: {
     PORT: string;
-    NODE_ENV: "production" | "test" | "development";
+    NODE_ENV: "test" | "production" | "development";
     MONGODB_URI: string;
     FRONTEND_URL: string;
     JWT_SECRET: string;

@@ -51,8 +51,11 @@ const REFRESH_COOKIE_OPTIONS = {
 /**
  * Issue new access + refresh tokens for a user
  * Stores refresh token in DB and sets HTTP-only cookie
+ *
+ * @param options.oauthFlow - When true, marks the refresh token as pending
+ *   an OAuth token exchange. The token is consumed exactly once by GET /api/auth/token.
  */
-const issueTokens = async (user, res, meta) => {
+const issueTokens = async (user, res, meta, options) => {
     const userId = user._id.toString();
     // Generate tokens
     const accessToken = (0, jwt_1.generateAccessToken)(userId, user.email, user.role);
@@ -66,6 +69,7 @@ const issueTokens = async (user, res, meta) => {
         expiresAt,
         userAgent: meta?.userAgent,
         ipAddress: meta?.ipAddress,
+        oauthPending: options?.oauthFlow === true,
     });
     // Set refresh token as HTTP-only cookie
     res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
@@ -132,7 +136,6 @@ const rotateRefreshToken = async (oldRefreshToken, res, meta) => {
             email: user.email,
             role: user.role,
             avatar: user.avatar,
-            isAdmin: user.isAdmin,
         },
     };
 };

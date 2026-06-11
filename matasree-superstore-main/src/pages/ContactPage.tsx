@@ -10,6 +10,8 @@ import { MapPin, Phone, Mail, Clock, Send, Loader2, CheckCircle, ArrowRight, Loc
 import { toast } from 'sonner';
 import logo from '@/assets/matasree-logo.png';
 import { apiClient } from '@/services/api';
+import PageHelmet from '@/components/PageHelmet';
+import JsonLd, { buildLocalBusinessSchema } from '@/components/JsonLd';
 
 const ContactPage = () => {
   const navigate = useNavigate();
@@ -93,6 +95,14 @@ const ContactPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-slate-50 to-white relative overflow-hidden">
+      <PageHelmet
+        title="Contact Us | Matasree Super Masale"
+        description="Get in touch with Matasree Super Masale. Reach us for orders, inquiries, or feedback — we're happy to help."
+        canonicalUrl="https://matasreesuper.com/contact"
+        ogType="website"
+      />
+      {/* LocalBusiness JSON-LD structured data (Req 27.5) */}
+      <JsonLd schema={buildLocalBusinessSchema()} />
       {/* Animated background elements */}
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
         <div className="absolute top-20 right-10 w-72 h-72 bg-amber-100/20 rounded-full blur-3xl animate-pulse" />

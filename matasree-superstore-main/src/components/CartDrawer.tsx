@@ -2,6 +2,7 @@ import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight, Sparkles } from 'lucid
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
 import { Link } from 'react-router-dom';
+import { WhatsAppCartButton } from '@/components/WhatsAppButton';
 
 const CartDrawer = () => {
   const { items, isOpen, setCartOpen, updateQuantity, removeItem, totalPrice } = useCartStore();
@@ -14,15 +15,22 @@ const CartDrawer = () => {
       <div
         className="fixed inset-0 bg-foreground/60 backdrop-blur-sm z-50 animate-fade-in"
         onClick={() => setCartOpen(false)}
+        aria-hidden="true"
       />
 
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-background z-50 shadow-2xl flex flex-col animate-slide-in-right" data-lenis-prevent>
+      {/* Drawer — role="dialog" with aria-modal and aria-label for Req 20.5 */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Shopping cart"
+        className="fixed right-0 top-0 h-full w-full max-w-md bg-background z-50 shadow-2xl flex flex-col animate-slide-in-right"
+        data-lenis-prevent
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border bg-gradient-to-r from-primary/5 to-accent/5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-spice flex items-center justify-center shadow-md">
-              <ShoppingBag className="w-5 h-5 text-white" />
+              <ShoppingBag className="w-5 h-5 text-white" aria-hidden="true" />
             </div>
             <div>
               <h2 className="font-serif text-xl font-bold">Your Cart</h2>
@@ -33,9 +41,10 @@ const CartDrawer = () => {
             variant="ghost"
             size="icon"
             onClick={() => setCartOpen(false)}
+            aria-label="Close cart"
             className="rounded-full hover:bg-destructive/10 hover:text-destructive"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </Button>
         </div>
 
@@ -98,17 +107,19 @@ const CartDrawer = () => {
                         size="icon"
                         className="w-8 h-8 rounded-md hover:bg-background"
                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        aria-label={`Decrease quantity of ${item.name}`}
                       >
-                        <Minus className="w-3 h-3" />
+                        <Minus className="w-3 h-3" aria-hidden="true" />
                       </Button>
-                      <span className="w-8 text-center font-medium text-sm">{item.quantity}</span>
+                      <span className="w-8 text-center font-medium text-sm" aria-live="polite" aria-label={`Quantity: ${item.quantity}`}>{item.quantity}</span>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="w-8 h-8 rounded-md hover:bg-background"
                         onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                        aria-label={`Increase quantity of ${item.name}`}
                       >
-                        <Plus className="w-3 h-3" />
+                        <Plus className="w-3 h-3" aria-hidden="true" />
                       </Button>
                     </div>
                     <div className="flex items-center gap-3">
@@ -118,8 +129,9 @@ const CartDrawer = () => {
                         size="icon"
                         className="w-8 h-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         onClick={() => removeItem(item.id)}
+                        aria-label={`Remove ${item.name} from cart`}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>
@@ -154,6 +166,14 @@ const CartDrawer = () => {
                 <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
               </Link>
             </Button>
+            <WhatsAppCartButton
+              cartItems={items.map((item) => ({
+                name: item.name,
+                qty: item.quantity,
+                price: item.price,
+              }))}
+              total={totalPrice()}
+            />
             <Button
               variant="ghost"
               className="w-full hover:bg-secondary"

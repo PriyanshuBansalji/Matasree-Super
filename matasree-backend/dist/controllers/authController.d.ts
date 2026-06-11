@@ -19,9 +19,16 @@ export declare const login: (req: any, res: Response) => Promise<Response<any, R
 export declare const refreshToken: (req: any, res: Response) => Promise<Response<any, Record<string, any>> | undefined>;
 /**
  * Handle OAuth callback (used for both Google and GitHub)
- * Issues tokens and redirects to frontend with access token
+ * Stores token in memory and redirects to frontend without token in URL
+ * Frontend fetches token from GET /api/auth/token endpoint
  */
 export declare const oauthCallback: RequestHandler;
+/**
+ * Get OAuth access token (called by frontend after OAuth redirect)
+ * Returns token exactly once, then destroys it
+ * Requires valid httpOnly refresh cookie from OAuth flow
+ */
+export declare const getOAuthToken: RequestHandler;
 /**
  * Logout user - revoke refresh token and clear cookie
  */

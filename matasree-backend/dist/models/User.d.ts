@@ -4,6 +4,10 @@
  * Role-based access control: admin | customer
  */
 import mongoose from 'mongoose';
+export interface IRecentlyViewedEntry {
+    productId: mongoose.Types.ObjectId;
+    viewedAt: Date;
+}
 export interface IUser {
     _id: mongoose.Types.ObjectId;
     name: string;
@@ -11,11 +15,15 @@ export interface IUser {
     password: string;
     phone: string;
     role: 'customer' | 'admin';
+    /** @deprecated Use `role === 'admin'` for admin checks. This field is redundant with `role` and will be removed in a future release. */
     isAdmin: boolean;
     avatar?: string;
     provider: 'local' | 'google' | 'github';
     providerId?: string;
     isEmailVerified: boolean;
+    referralCode: string;
+    loyaltyAccountId?: mongoose.Types.ObjectId;
+    recentlyViewed: IRecentlyViewedEntry[];
     createdAt: Date;
     updatedAt: Date;
 }

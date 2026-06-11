@@ -7,6 +7,7 @@ import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
 import { toast } from 'sonner';
 import { Heart, ShoppingCart, Trash2, ArrowRight, Star } from 'lucide-react';
+import PageHelmet from '@/components/PageHelmet';
 
 const WishlistPage = () => {
     const { items, removeItem, clearWishlist } = useWishlistStore();
@@ -37,6 +38,12 @@ const WishlistPage = () => {
 
     return (
         <div className="min-h-screen bg-background">
+            <PageHelmet
+                title="My Wishlist | Matasree Super Masale"
+                description="View your saved spices and masalas on Matasree Super Masale."
+                canonicalUrl="https://matasreesuper.com/wishlist"
+                noIndex={true}
+            />
             <Navbar />
             <main className="page-enter container mx-auto px-4 pt-24 pb-16">
                 {/* Header */}

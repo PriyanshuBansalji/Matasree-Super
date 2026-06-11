@@ -1,6 +1,6 @@
 import express, { Router, Request, Response } from 'express';
 import nodemailer from 'nodemailer';
-import { validationResult, body } from 'express-validator';
+import Joi from 'joi';
 import Coupon from '../models/Coupon';
 import User from '../models/User';
 import { generateUniqueCode } from './couponRoutes';
@@ -17,36 +17,17 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Contact form validation middleware
-const validateContact = [
-  body('name')
-    .trim()
-    .notEmpty()
-    .withMessage('Name is required')
-    .isLength({ min: 2 })
-    .withMessage('Name must be at least 2 characters'),
-  body('email')
-    .isEmail()
-    .withMessage('Please provide a valid email address')
-    .normalizeEmail(),
-  body('subject')
-    .trim()
-    .notEmpty()
-    .withMessage('Subject is required')
-    .isLength({ min: 3, max: 100 })
-    .withMessage('Subject must be between 3 and 100 characters'),
-  body('message')
-    .trim()
-    .notEmpty()
-    .withMessage('Message is required')
-    .isLength({ min: 5, max: 5000 })
-    .withMessage('Message must be between 5 and 5000 characters'),
-  body('phone')
+// Contact form Joi validation schema
+const contactSchema = Joi.object({
+  name: Joi.string().trim().min(2).max(100).required(),
+  email: Joi.string().email().lowercase().required(),
+  subject: Joi.string().trim().min(3).max(100).required(),
+  message: Joi.string().trim().min(5).max(5000).required(),
+  phone: Joi.string()
+    .pattern(/^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/)
     .optional()
-    .trim()
-    .matches(/^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/)
-    .withMessage('Please provide a valid phone number'),
-];
+    .allow(''),
+});
 
 // Subscribe to newsletter — requires login, uses logged-in user's email ONLY
 router.post('/subscribe', verifyToken, async (req: any, res: Response) => {
@@ -257,17 +238,14 @@ router.post('/subscribe', verifyToken, async (req: any, res: Response) => {
 });
 
 // Contact form email
-router.post('/contact', validateContact, async (req: Request, res: Response) => {
+router.post('/contact', async (req: Request, res: Response) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array()
-      });
+    const { error, value } = contactSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
-    const { name, email, subject, message, phone } = req.body;
+    const { name, email, subject, message, phone } = value;
 
     const contactMailOptions = {
       from: process.env.EMAIL_USER,

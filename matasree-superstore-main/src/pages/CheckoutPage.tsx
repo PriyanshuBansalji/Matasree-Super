@@ -10,14 +10,27 @@ import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
 import { toast } from 'sonner';
 import {
     MapPin, CreditCard, Truck, ShoppingBag, ArrowLeft,
-    CheckCircle, Plus, Loader2, Package, Shield, Tag, X, Percent
+    CheckCircle, Plus, Loader2, Shield, Tag, X, Percent, Star,
+    AlertTriangle,
 } from 'lucide-react';
+import LoyaltyWidget from '@/components/LoyaltyWidget';
+import PageHelmet from '@/components/PageHelmet';
+import ExitIntentModal from '@/components/ExitIntentModal';
+import TrustBadges from '@/components/TrustBadges';
 
 declare global {
     interface Window {
@@ -27,7 +40,7 @@ declare global {
 
 const CheckoutPage = () => {
     const navigate = useNavigate();
-    const { items, totalPrice, clearCart } = useCartStore();
+    const { items, totalPrice, clearCart, removeItem, updateItemPrice } = useCartStore();
     const { isAuthenticated, user } = useAuthStore();
     const { data: addressesData, isLoading: addressesLoading } = useAddresses();
 
@@ -35,6 +48,13 @@ const CheckoutPage = () => {
     const [paymentMethod, setPaymentMethod] = useState<'cod' | 'razorpay'>('razorpay');
     const [isProcessing, setIsProcessing] = useState(false);
     const [step, setStep] = useState(1);
+
+    // Cart sync state (Requirements: 24.1–24.5)
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncOverlay, setSyncOverlay] = useState(false);
+    const [syncPriceDiffs, setSyncPriceDiffs] = useState<Array<{ productId: string; oldPrice: number; newPrice: number; name?: string }>>([]);
+    const [syncRemovedItems, setSyncRemovedItems] = useState<Array<{ productId: string; quantity: number; clientPrice: number; name?: string }>>([]);
+    const [showSyncAlert, setShowSyncAlert] = useState(false);
 
     // Coupon state
     const [couponCode, setCouponCode] = useState('');
@@ -46,6 +66,9 @@ const CheckoutPage = () => {
         maxDiscount: number;
         calculatedDiscount: number;
     } | null>(null);
+
+    // Loyalty discount state
+    const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
 
     useEffect(() => {
         const token = localStorage.getItem('authToken');
@@ -62,7 +85,7 @@ const CheckoutPage = () => {
 
     const addresses = useMemo(() => {
         if (!addressesData) return [];
-        const data = addressesData.data?.data || addressesData.data || [];
+        const data = addressesData.data || [];
         return Array.isArray(data) ? data : [];
     }, [addressesData]);
 
@@ -83,7 +106,7 @@ const CheckoutPage = () => {
     const subtotal = totalPrice();
     const shippingFee = subtotal >= 499 ? 0 : 49;
     const couponDiscount = appliedCoupon?.calculatedDiscount || 0;
-    const total = Math.max(0, subtotal + shippingFee - couponDiscount);
+    const total = Math.max(0, subtotal + shippingFee - couponDiscount - loyaltyDiscount);
 
     // Coupon handlers
     const handleApplyCoupon = async () => {
@@ -95,7 +118,7 @@ const CheckoutPage = () => {
         setCouponLoading(true);
         try {
             const response = await apiClient.validateCoupon(couponCode.trim(), subtotal);
-            const couponData = response.data.data;
+            const couponData = (response as any).data;
 
             setAppliedCoupon(couponData);
             toast.success(`Coupon applied! You save ₹${couponData.calculatedDiscount} 🎉`);
@@ -114,15 +137,76 @@ const CheckoutPage = () => {
         toast.info('Coupon removed');
     };
 
-    // Sync local cart items to backend cart before order
-    const syncCartToBackend = async () => {
+    /**
+     * handleProceedToCheckout — validates cart against live data before advancing to step 2.
+     * Requirements: 24.1, 24.2, 24.3, 24.4, 24.5
+     */
+    const handleProceedToCheckout = async () => {
+        setIsSyncing(true);
+
+        // Requirement 24.5: show overlay if sync takes > 3 s
+        const overlayTimer = window.setTimeout(() => setSyncOverlay(true), 3000);
+
         try {
-            for (const item of items) {
-                await apiClient.addToCart({ productId: item.id, quantity: item.quantity });
+            const formattedItems = items.map((item) => ({
+                productId: item.id,
+                quantity: item.quantity,
+                clientPrice: item.price,
+            }));
+
+            const response: any = await apiClient.syncCart(formattedItems);
+            const { priceDiffs, removedItems } = response.data;
+
+            // Build a name lookup from local cart items
+            const nameById = Object.fromEntries(items.map((i) => [i.id, i.name]));
+
+            // Requirement 24.2: remove out-of-stock items from client cart
+            const removedWithNames = (removedItems as Array<{ productId: string; quantity: number; clientPrice: number }>).map(
+                (ri) => ({ ...ri, name: nameById[ri.productId] ?? ri.productId })
+            );
+            for (const ri of removedWithNames) {
+                removeItem(ri.productId);
             }
-        } catch (error) {
-            console.error('Cart sync error:', error);
+
+            // Requirement 24.3: update prices in cart store for changed items
+            const diffsWithNames = (priceDiffs as Array<{ productId: string; oldPrice: number; newPrice: number }>).map(
+                (pd) => ({ ...pd, name: nameById[pd.productId] ?? pd.productId })
+            );
+            for (const pd of diffsWithNames) {
+                updateItemPrice(pd.productId, pd.newPrice);
+            }
+
+            const hasChanges = removedWithNames.length > 0 || diffsWithNames.length > 0;
+
+            if (hasChanges) {
+                // Show blocking alert — do NOT advance step yet
+                setSyncRemovedItems(removedWithNames);
+                setSyncPriceDiffs(diffsWithNames);
+                setShowSyncAlert(true);
+            } else {
+                // No changes — advance immediately
+                setStep(2);
+            }
+        } catch {
+            // Requirement 24.4: network / non-2xx error — stay on step 1, retain all items
+            toast.error('Unable to verify cart. Please try again.');
+        } finally {
+            window.clearTimeout(overlayTimer);
+            setIsSyncing(false);
+            setSyncOverlay(false);
         }
+    };
+
+    // Sync local cart items to backend cart before order.
+    // Uses syncCart (which atomically replaces the server-side cart) instead of
+    // addToCart (which increments quantities, causing duplicates on repeated calls).
+    const syncCartToBackend = async () => {
+        const formattedItems = items.map((item) => ({
+            productId: item.id,
+            quantity: item.quantity,
+            clientPrice: item.price,
+        }));
+        await apiClient.syncCart(formattedItems);
     };
 
     const loadRazorpayScript = (): Promise<boolean> => {
@@ -151,14 +235,15 @@ const CheckoutPage = () => {
             await syncCartToBackend();
 
             // 2. Create order
+            const totalDiscount = (couponDiscount || 0) + (loyaltyDiscount || 0);
             const orderResponse = await apiClient.createOrder({
                 addressId: selectedAddressId,
                 paymentMethod,
                 couponCode: appliedCoupon?.code || undefined,
-                couponDiscount: couponDiscount || undefined,
+                discountAmount: totalDiscount > 0 ? totalDiscount : undefined,
             });
 
-            const { order, razorpayOrder } = orderResponse.data.data;
+            const { order, razorpayOrder } = (orderResponse as any).data;
 
             // 3. Mark coupon as used
             if (appliedCoupon?.code && order?._id) {
@@ -234,12 +319,18 @@ const CheckoutPage = () => {
 
     return (
         <div className="min-h-screen bg-background">
+            <PageHelmet
+                title="Checkout | Matasree Super Masale"
+                description="Complete your order from Matasree Super Masale — secure checkout with multiple payment options."
+                canonicalUrl="https://matasreesuper.com/checkout"
+                noIndex={true}
+            />
             <Navbar />
-            <main className="page-enter container mx-auto px-4 pt-24 pb-16">
+            <main id="main-content" className="page-enter container mx-auto px-4 pt-24 pb-16">
                 {/* Header */}
                 <div className="flex items-center gap-4 mb-8">
-                    <Button variant="ghost" onClick={() => navigate(-1)} className="rounded-full">
-                        <ArrowLeft className="w-5 h-5" />
+                    <Button variant="ghost" onClick={() => navigate(-1)} className="rounded-full" aria-label="Go back">
+                        <ArrowLeft className="w-5 h-5" aria-hidden="true" />
                     </Button>
                     <div>
                         <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground">Checkout</h1>
@@ -257,11 +348,13 @@ const CheckoutPage = () => {
                         <div key={s.num} className="flex items-center">
                             <button
                                 onClick={() => setStep(s.num)}
+                                aria-label={`Step ${s.num}: ${s.label}`}
+                                aria-current={step === s.num ? 'step' : undefined}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all ${step >= s.num ? 'bg-gradient-spice text-white shadow-md' : 'bg-secondary text-muted-foreground'}`}
                             >
-                                <s.icon className="w-4 h-4" /> {s.label}
+                                <s.icon className="w-4 h-4" aria-hidden="true" /> {s.label}
                             </button>
-                            {i < 2 && <div className={`w-8 h-0.5 mx-1 ${step > s.num ? 'bg-primary' : 'bg-border'}`} />}
+                            {i < 2 && <div className={`w-8 h-0.5 mx-1 ${step > s.num ? 'bg-primary' : 'bg-border'}`} aria-hidden="true" />}
                         </div>
                     ))}
                 </div>
@@ -308,8 +401,16 @@ const CheckoutPage = () => {
                                     </div>
                                 )}
                                 {step === 1 && addresses.length > 0 && (
-                                    <Button onClick={() => setStep(2)} className="w-full mt-4 bg-gradient-spice text-white py-6 rounded-xl">
-                                        Continue to Payment
+                                    <Button
+                                        onClick={handleProceedToCheckout}
+                                        disabled={isSyncing}
+                                        className="w-full mt-4 bg-gradient-spice text-white py-6 rounded-xl"
+                                    >
+                                        {isSyncing ? (
+                                            <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Verifying cart…</>
+                                        ) : (
+                                            'Continue to Payment'
+                                        )}
                                     </Button>
                                 )}
                             </div>
@@ -405,8 +506,8 @@ const CheckoutPage = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <Button variant="ghost" size="icon" onClick={handleRemoveCoupon} className="text-red-400 hover:text-red-600 hover:bg-red-50">
-                                            <X className="w-4 h-4" />
+                                        <Button variant="ghost" size="icon" onClick={handleRemoveCoupon} aria-label="Remove coupon" className="text-red-400 hover:text-red-600 hover:bg-red-50">
+                                            <X className="w-4 h-4" aria-hidden="true" />
                                         </Button>
                                     </div>
                                     <div className="mt-3 pt-3 border-t border-green-200 flex justify-between">
@@ -440,6 +541,13 @@ const CheckoutPage = () => {
                                 </div>
                             )}
                         </div>
+
+                        {/* Loyalty Widget */}
+                        <LoyaltyWidget
+                            isCheckout
+                            orderSubtotal={subtotal}
+                            onRedeemSuccess={setLoyaltyDiscount}
+                        />
 
                         {/* Order Summary */}
                         <div className="bg-card rounded-2xl p-6 border border-border shadow-sm sticky top-24">
@@ -477,6 +585,14 @@ const CheckoutPage = () => {
                                         <span className="font-medium text-green-600">-₹{couponDiscount}</span>
                                     </div>
                                 )}
+                                {loyaltyDiscount > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-600 font-medium flex items-center gap-1">
+                                            <Star className="w-3 h-3" /> Loyalty Discount
+                                        </span>
+                                        <span className="font-medium text-amber-600">-₹{loyaltyDiscount.toFixed(2)}</span>
+                                    </div>
+                                )}
                                 <div className="flex justify-between pt-3 border-t border-border">
                                     <span className="font-bold text-lg">Total</span>
                                     <div className="text-right">
@@ -492,12 +608,87 @@ const CheckoutPage = () => {
                                     Add <strong>₹{(499 - subtotal).toFixed(0)}</strong> more for <strong className="text-green-600">FREE shipping!</strong>
                                 </div>
                             )}
+                            <TrustBadges className="mt-4 pt-4 border-t border-border" />
                         </div>
                     </div>
                 </div>
             </main>
             <Footer />
             <CartDrawer />
+            {/* Exit-intent offer modal — active only when cart is non-empty and order not yet placed */}
+            <ExitIntentModal active={items.length > 0 && !isProcessing} />
+
+            {/* Requirement 24.5 — "Verifying your cart…" overlay when sync takes > 3 s */}
+            {syncOverlay && (
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <Loader2 className="w-12 h-12 animate-spin text-white mb-4" />
+                    <p className="text-white text-lg font-semibold">Verifying your cart…</p>
+                </div>
+            )}
+
+            {/* Requirements 24.2, 24.3 — blocking CartSyncAlert dialog */}
+            <Dialog open={showSyncAlert} onOpenChange={() => {}}>
+                <DialogContent
+                    className="sm:max-w-md"
+                    onPointerDownOutside={(e) => e.preventDefault()}
+                    onEscapeKeyDown={(e) => e.preventDefault()}
+                >
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <AlertTriangle className="w-5 h-5 text-amber-500" />
+                            Cart Updated
+                        </DialogTitle>
+                        <DialogDescription>
+                            Some items in your cart have changed. Please review before continuing.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        {/* Price changes */}
+                        {syncPriceDiffs.length > 0 && (
+                            <div>
+                                <p className="text-sm font-semibold text-foreground mb-2">Price changes:</p>
+                                <ul className="space-y-1">
+                                    {syncPriceDiffs.map((pd) => (
+                                        <li key={pd.productId} className="flex items-center justify-between text-sm bg-amber-50 rounded-lg px-3 py-2">
+                                            <span className="text-foreground truncate max-w-[60%]">{pd.name}</span>
+                                            <span className="text-muted-foreground line-through mr-2">₹{pd.oldPrice}</span>
+                                            <span className="font-semibold text-amber-700">₹{pd.newPrice}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {/* Removed items */}
+                        {syncRemovedItems.length > 0 && (
+                            <div>
+                                <p className="text-sm font-semibold text-foreground mb-2">Removed (out of stock):</p>
+                                <ul className="space-y-1">
+                                    {syncRemovedItems.map((ri) => (
+                                        <li key={ri.productId} className="flex items-center gap-2 text-sm bg-red-50 rounded-lg px-3 py-2 text-red-700">
+                                            <X className="w-4 h-4 flex-shrink-0" />
+                                            <span className="truncate">{ri.name}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            className="w-full bg-gradient-spice text-white"
+                            onClick={() => {
+                                setShowSyncAlert(false);
+                                setStep(2);
+                            }}
+                        >
+                            Continue to Payment
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

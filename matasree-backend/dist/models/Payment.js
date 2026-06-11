@@ -63,5 +63,8 @@ const paymentSchema = new mongoose_1.Schema({
         required: true,
     },
 }, { timestamps: true });
+// Indexes for order and user payment lookups
+paymentSchema.index({ orderId: 1 }, { background: true });
+paymentSchema.index({ userId: 1, status: 1 }, { background: true });
 exports.default = mongoose_1.default.model('Payment', paymentSchema);
 //# sourceMappingURL=Payment.js.map

@@ -18,6 +18,7 @@ import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useProducts, useCategories } from '@/hooks/useApi';
 import heroImage from '@/assets/hero-spices.jpg';
+import PageHelmet from '@/components/PageHelmet';
 
 interface Product {
   _id: string;
@@ -205,6 +206,12 @@ const ProductsPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHelmet
+        title="Products | Matasree Super Masale"
+        description="Browse our full range of authentic Indian spices and masalas — chilli powder, turmeric, coriander, garam masala, and more from Matasree Super Masale."
+        canonicalUrl="https://matasreesuper.com/products"
+        ogType="website"
+      />
       <Navbar />
 
       {/* Hero Banner */}

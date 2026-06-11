@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuthStore } from '@/store/authStore';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/services/api';
+import PageHelmet from '@/components/PageHelmet';
 
 const RegisterPage = () => {
   const navigate = useNavigate();
@@ -389,6 +390,12 @@ const RegisterPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+      <PageHelmet
+        title="Register | Matasree Super Masale"
+        description="Create your Matasree Super Masale account to track orders, save addresses, and enjoy exclusive offers."
+        canonicalUrl="https://matasreesuper.com/register"
+        noIndex={true}
+      />
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-amber-100/30 to-orange-100/20 rounded-full blur-3xl translate-x-1/3 -translate-y-1/2" />
@@ -397,7 +404,7 @@ const RegisterPage = () => {
 
       <Navbar />
 
-      <main className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center relative z-10">
+      <main id="main-content" className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center relative z-10">
         {/* Step Indicator */}
         <div className="flex justify-center gap-2 sm:gap-4 px-4 mb-10 flex-wrap w-full">
           <div className={`flex items-center gap-1 sm:gap-2 ${step === 'details' ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
@@ -470,11 +477,13 @@ const RegisterPage = () => {
                               : 'border-gray-200 hover:border-amber-300'
                           }`}
                         disabled={isLoading || otpLoading}
+                        aria-describedby={touched.name && errors.name ? 'register-name-error' : undefined}
+                        aria-invalid={!!(touched.name && errors.name)}
                       />
                     </div>
                     {touched.name && errors.name && (
-                      <div className="flex items-center gap-2 text-red-600 text-sm">
-                        <AlertCircle className="w-4 h-4" />
+                      <div id="register-name-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                        <AlertCircle className="w-4 h-4" aria-hidden="true" />
                         {errors.name}
                       </div>
                     )}
@@ -503,11 +512,13 @@ const RegisterPage = () => {
                               : 'border-gray-200 hover:border-amber-300'
                           }`}
                         disabled={isLoading || otpLoading}
+                        aria-describedby={touched.email && errors.email ? 'register-email-error' : undefined}
+                        aria-invalid={!!(touched.email && errors.email)}
                       />
                     </div>
                     {touched.email && errors.email && (
-                      <div className="flex items-center gap-2 text-red-600 text-sm">
-                        <AlertCircle className="w-4 h-4" />
+                      <div id="register-email-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                        <AlertCircle className="w-4 h-4" aria-hidden="true" />
                         {errors.email}
                       </div>
                     )}
@@ -537,11 +548,13 @@ const RegisterPage = () => {
                               : 'border-gray-200 hover:border-amber-300'
                           }`}
                         disabled={isLoading || otpLoading}
+                        aria-describedby={touched.mobile && errors.mobile ? 'register-mobile-error' : undefined}
+                        aria-invalid={!!(touched.mobile && errors.mobile)}
                       />
                     </div>
                     {touched.mobile && errors.mobile && (
-                      <div className="flex items-center gap-2 text-red-600 text-sm">
-                        <AlertCircle className="w-4 h-4" />
+                      <div id="register-mobile-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                        <AlertCircle className="w-4 h-4" aria-hidden="true" />
                         {errors.mobile}
                       </div>
                     )}
@@ -570,18 +583,21 @@ const RegisterPage = () => {
                               : 'border-gray-200 hover:border-amber-300'
                           }`}
                         disabled={isLoading || otpLoading}
+                        aria-describedby={touched.password && errors.password ? 'register-password-error' : undefined}
+                        aria-invalid={!!(touched.password && errors.password)}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-amber-600 transition-colors"
                       >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
                       </button>
                     </div>
                     {touched.password && errors.password && (
-                      <div className="flex items-center gap-2 text-red-600 text-sm">
-                        <AlertCircle className="w-4 h-4" />
+                      <div id="register-password-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                        <AlertCircle className="w-4 h-4" aria-hidden="true" />
                         {errors.password}
                       </div>
                     )}
@@ -662,18 +678,21 @@ const RegisterPage = () => {
                               : 'border-gray-200 hover:border-amber-300'
                           }`}
                         disabled={isLoading || otpLoading}
+                        aria-describedby={touched.confirmPassword && errors.confirmPassword ? 'register-confirm-password-error' : undefined}
+                        aria-invalid={!!(touched.confirmPassword && errors.confirmPassword)}
                       />
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-amber-600 transition-colors"
                       >
-                        {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showConfirmPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
                       </button>
                     </div>
                     {touched.confirmPassword && errors.confirmPassword && (
-                      <div className="flex items-center gap-2 text-red-600 text-sm">
-                        <AlertCircle className="w-4 h-4" />
+                      <div id="register-confirm-password-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                        <AlertCircle className="w-4 h-4" aria-hidden="true" />
                         {errors.confirmPassword}
                       </div>
                     )}
@@ -777,11 +796,13 @@ const RegisterPage = () => {
                         maxLength={6}
                         className="pl-12 py-6 border-2 border-blue-300 hover:border-blue-400 text-center text-2xl tracking-widest font-bold"
                         disabled={otpLoading}
+                        aria-describedby={errors.emailOtp ? 'register-email-otp-error' : undefined}
+                        aria-invalid={!!errors.emailOtp}
                       />
                     </div>
                     {errors.emailOtp && (
-                      <div className="flex items-center gap-2 text-red-600 text-sm">
-                        <AlertCircle className="w-4 h-4" />
+                      <div id="register-email-otp-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                        <AlertCircle className="w-4 h-4" aria-hidden="true" />
                         {errors.emailOtp}
                       </div>
                     )}
@@ -894,11 +915,13 @@ const RegisterPage = () => {
                         maxLength={6}
                         className="pl-12 py-6 border-2 border-purple-300 hover:border-purple-400 text-center text-2xl tracking-widest font-bold"
                         disabled={otpLoading}
+                        aria-describedby={errors.mobileOtp ? 'register-mobile-otp-error' : undefined}
+                        aria-invalid={!!errors.mobileOtp}
                       />
                     </div>
                     {errors.mobileOtp && (
-                      <div className="flex items-center gap-2 text-red-600 text-sm">
-                        <AlertCircle className="w-4 h-4" />
+                      <div id="register-mobile-otp-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                        <AlertCircle className="w-4 h-4" aria-hidden="true" />
                         {errors.mobileOtp}
                       </div>
                     )}

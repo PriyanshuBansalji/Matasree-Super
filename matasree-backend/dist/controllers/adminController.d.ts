@@ -15,4 +15,12 @@ export declare const getRevenueAnalytics: (req: any, res: Response) => Promise<v
  * Get payment summary (Admin)
  */
 export declare const getPaymentSummary: (req: any, res: Response) => Promise<void>;
+/**
+ * Update user role (Admin)
+ */
+export declare const updateUserRole: (req: any, res: Response) => Promise<Response<any, Record<string, any>> | undefined>;
+/**
+ * Delete user (Admin)
+ */
+export declare const deleteUser: (req: any, res: Response) => Promise<Response<any, Record<string, any>> | undefined>;
 //# sourceMappingURL=adminController.d.ts.map

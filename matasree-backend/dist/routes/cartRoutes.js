@@ -44,5 +44,6 @@ router.post('/add', cartController.addToCart);
 router.put('/update', cartController.updateCartItem);
 router.post('/remove', cartController.removeFromCart);
 router.post('/clear', cartController.clearCart);
+router.post('/sync', cartController.syncCart);
 exports.default = router;
 //# sourceMappingURL=cartRoutes.js.map

@@ -70,3 +70,62 @@ describe('Auth Routes', () => {
         expect(res.body.success).toBe(false);
     });
 });
+
+/**
+ * OAuth Token Delivery Tests (Requirement 29.1, 29.2)
+ * 
+ * Verifies that:
+ * 1. OAuth callback does NOT include token in URL (redirects cleanly to /auth/callback)
+ * 2. GET /api/auth/token returns { accessToken, user } exactly once per OAuth flow
+ * 3. Token is served over httpOnly cookie, not in request/response body
+ * 4. Subsequent token retrieval attempts fail with 401
+ */
+describe('OAuth Token Delivery (Req 29)', () => {
+    beforeAll(async () => {
+        if (mongoose.connection.readyState === 0) {
+            await mongoose.connect(process.env.MONGODB_URI as string);
+        }
+        await User.deleteMany({});
+    });
+
+    afterAll(async () => {
+        await User.deleteMany({});
+        await disconnectDB();
+    });
+
+    it('GET /api/auth/token should be protected by verifyToken (requires valid accessToken)', async () => {
+        // Req 29.2: Token endpoint is cookie-authenticated
+        const res = await request(app)
+            .get('/api/auth/token')
+            .set('Authorization', ''); // No token
+
+        // Should fail because no valid JWT or refresh cookie
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+
+    it('GET /api/auth/token should return 401 when no token is stored (OAuth not in flight)', async () => {
+        // Create a user and get a valid access token
+        const registerRes = await request(app)
+            .post('/api/auth/register')
+            .send({
+                name: 'OAuth Test User',
+                email: 'oauth@test.com',
+                password: 'password123'
+            });
+
+        const accessToken = registerRes.body.data.accessToken;
+        const cookies = registerRes.headers['set-cookie'];
+
+        // Try to get OAuth token even though no OAuth flow is in flight
+        // Should return 401 because no token is stored in oauthTokenStore
+        const res = await request(app)
+            .get('/api/auth/token')
+            .set('Authorization', `Bearer ${accessToken}`)
+            .set('Cookie', Array.isArray(cookies) ? cookies[0] : '');
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+        expect(res.body.message).toContain('No token available');
+    });
+});

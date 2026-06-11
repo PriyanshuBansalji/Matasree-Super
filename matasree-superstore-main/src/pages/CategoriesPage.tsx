@@ -7,6 +7,8 @@ import { ArrowRight, Loader2, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCategories, useProducts } from '@/hooks/useApi';
 import ProductCard from '@/components/ProductCard';
+import PageHelmet from '@/components/PageHelmet';
+import JsonLd, { buildBreadcrumbSchema } from '@/components/JsonLd';
 
 interface Category {
   _id: string;
@@ -76,9 +78,22 @@ const CategoriesPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHelmet
+        title="Categories | Matasree Super Masale"
+        description="Explore all spice categories at Matasree Super Masale — from everyday kitchen staples to regional specialties and masala blends."
+        canonicalUrl="https://matasreesuper.com/categories"
+        ogType="website"
+      />
+      {/* BreadcrumbList JSON-LD structured data (Req 27.3) */}
+      <JsonLd
+        schema={buildBreadcrumbSchema([
+          { name: 'Home', url: 'https://matasreesuper.com/' },
+          { name: 'Categories', url: 'https://matasreesuper.com/categories' },
+        ])}
+      />
       <Navbar />
 
-      <main className="container mx-auto px-4 py-12">
+      <main className="container mx-auto px-4 py-12" id="main-content" aria-label="Product categories">
         {/* Header */}
         <div className="text-center mb-16 relative">
           <div className="absolute inset-0 -z-10 overflow-hidden">
@@ -134,6 +149,7 @@ const CategoriesPage = () => {
                     key={category._id}
                     className="scroll-mt-24 group"
                     id={category.name}
+                    aria-labelledby={`cat-heading-${category._id}`}
                   >
                     {/* Category Header */}
                     <div className="relative mb-10">
@@ -154,7 +170,7 @@ const CategoriesPage = () => {
                               </div>
                             )}
                             <div>
-                              <h2 className="font-serif text-3xl md:text-4xl font-bold text-foreground group-hover:text-primary transition-colors">
+                              <h2 id={`cat-heading-${category._id}`} className="font-serif text-3xl md:text-4xl font-bold text-foreground group-hover:text-primary transition-colors">
                                 {category.name}
                               </h2>
                               <div className="h-1 w-20 bg-gradient-to-r from-primary to-accent rounded-full mt-2" />

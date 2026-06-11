@@ -20,11 +20,15 @@ const REFRESH_COOKIE_OPTIONS = {
 /**
  * Issue new access + refresh tokens for a user
  * Stores refresh token in DB and sets HTTP-only cookie
+ *
+ * @param options.oauthFlow - When true, marks the refresh token as pending
+ *   an OAuth token exchange. The token is consumed exactly once by GET /api/auth/token.
  */
 export const issueTokens = async (
   user: { _id: any; email: string; role: string },
   res: Response,
-  meta?: { userAgent?: string; ipAddress?: string }
+  meta?: { userAgent?: string; ipAddress?: string },
+  options?: { oauthFlow?: boolean }
 ) => {
   const userId = user._id.toString();
 
@@ -42,6 +46,7 @@ export const issueTokens = async (
     expiresAt,
     userAgent: meta?.userAgent,
     ipAddress: meta?.ipAddress,
+    oauthPending: options?.oauthFlow === true,
   });
 
   // Set refresh token as HTTP-only cookie
@@ -129,7 +134,6 @@ export const rotateRefreshToken = async (
       email: user.email,
       role: user.role,
       avatar: user.avatar,
-      isAdmin: user.isAdmin,
     },
   };
 };

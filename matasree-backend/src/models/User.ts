@@ -5,6 +5,11 @@
  */
 import mongoose, { Schema } from 'mongoose';
 
+export interface IRecentlyViewedEntry {
+  productId: mongoose.Types.ObjectId;
+  viewedAt: Date;
+}
+
 export interface IUser {
   _id: mongoose.Types.ObjectId;
   name: string;
@@ -12,12 +17,16 @@ export interface IUser {
   password: string;
   phone: string;
   role: 'customer' | 'admin';
+  /** @deprecated Use `role === 'admin'` for admin checks. This field is redundant with `role` and will be removed in a future release. */
   isAdmin: boolean;
   avatar?: string;
   // OAuth fields
   provider: 'local' | 'google' | 'github';
   providerId?: string;
   isEmailVerified: boolean;
+  referralCode: string;
+  loyaltyAccountId?: mongoose.Types.ObjectId;
+  recentlyViewed: IRecentlyViewedEntry[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +63,7 @@ const userSchema = new Schema<IUser>(
       enum: ['customer', 'admin'],
       default: 'customer',
     },
+    /** @deprecated Use `role === 'admin'` for admin checks. This field is redundant with `role` and will be removed in a future release. */
     isAdmin: {
       type: Boolean,
       default: false,
@@ -74,6 +84,25 @@ const userSchema = new Schema<IUser>(
     isEmailVerified: {
       type: Boolean,
       default: false,
+    },
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    loyaltyAccountId: {
+      type: Schema.Types.ObjectId,
+      ref: 'LoyaltyAccount',
+    },
+    // Recently viewed products — sliding window of 10, ordered by viewedAt desc
+    recentlyViewed: {
+      type: [
+        {
+          productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+          viewedAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
     },
   },
   { timestamps: true }

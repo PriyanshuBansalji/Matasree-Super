@@ -27,70 +27,116 @@ function generateUniqueCode(prefix = 'MS') {
     return code + hash;
 }
 /**
- * Validate a coupon code (public, authenticated)
+ * Core coupon validation algorithm (Req 12.1–12.6).
+ *
+ * Validates existence, expiry, maxUses, minOrderAmount, and computes the
+ * discountAmount respecting category restrictions, percentage vs fixed type,
+ * maxDiscount cap, and orderAmount cap.
+ *
+ * Returns { valid: true, discountAmount } on success or
+ *         { valid: false, reason } on any validation failure.
+ */
+function computeCouponDiscount(coupon, orderAmount, cartItems) {
+    const now = new Date();
+    // Req 12.1 — expiry check
+    if (coupon.expiresAt < now) {
+        return { valid: false, reason: 'Coupon has expired' };
+    }
+    // Req 12.2 — maxUses / usageCount check
+    if (coupon.maxUses > 0 && coupon.usageCount >= coupon.maxUses) {
+        return { valid: false, reason: 'Coupon maximum uses reached' };
+    }
+    // Req 12.1 — minimum order amount check
+    if (orderAmount < coupon.minOrderAmount) {
+        return { valid: false, reason: `Minimum order amount of ₹${coupon.minOrderAmount} not met` };
+    }
+    // Req 12.3 — category restriction: compute effectiveAmount
+    let effectiveAmount;
+    const restrictions = coupon.categoryRestrictions ?? [];
+    if (restrictions.length > 0) {
+        const eligibleItems = cartItems.filter((item) => item.categoryId && restrictions.includes(item.categoryId));
+        effectiveAmount = eligibleItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+    }
+    else {
+        effectiveAmount = orderAmount;
+    }
+    // Req 12.1 — percentage vs fixed discount
+    let rawDiscount;
+    if (coupon.discountType === 'percentage') {
+        rawDiscount = effectiveAmount * (coupon.discountValue / 100);
+    }
+    else {
+        rawDiscount = coupon.discountValue;
+    }
+    // Cap by maxDiscount (0 = no cap)
+    let discountAmount;
+    if (coupon.maxDiscount > 0) {
+        discountAmount = Math.min(rawDiscount, coupon.maxDiscount);
+    }
+    else {
+        discountAmount = rawDiscount;
+    }
+    // Cap by orderAmount — discount can never exceed what the customer owes
+    discountAmount = Math.min(discountAmount, orderAmount);
+    return { valid: true, discountAmount: Math.round(discountAmount * 100) / 100 };
+}
+/**
+ * Validate a coupon code (authenticated)
  * POST /api/coupons/validate
+ *
+ * Body:
+ *   code        {string}     — coupon code to validate
+ *   orderAmount {number}     — total cart value before discount
+ *   cartItems   {CartItem[]} — optional; required for category-restricted coupons
+ *
+ * Returns HTTP 400 with a descriptive message for every validation failure (Req 12.6).
  */
 router.post('/validate', auth_1.verifyToken, async (req, res) => {
     try {
         const authReq = req;
-        const { code, orderAmount } = req.body;
-        if (!code) {
+        const { code, orderAmount, cartItems = [] } = req.body;
+        if (!code || typeof code !== 'string') {
             return res.status(400).json(new response_1.ApiResponse(false, 'Coupon code is required', null, 400));
         }
+        const parsedOrderAmount = parseFloat(orderAmount) || 0;
+        // Req 12.1 — existence check
         const coupon = await Coupon_1.default.findOne({ code: code.toUpperCase().trim() });
         if (!coupon) {
-            return res.status(404).json(new response_1.ApiResponse(false, 'Invalid coupon code', null, 404));
+            return res.status(400).json(new response_1.ApiResponse(false, 'Invalid coupon code', null, 400));
         }
-        // Check if already used
-        if (coupon.isUsed) {
-            return res.status(400).json(new response_1.ApiResponse(false, 'This coupon has already been used', null, 400));
-        }
-        // Newsletter coupon lifetime limits
+        // Newsletter coupon ownership check (pre-existing business rule)
         if (coupon.source === 'newsletter') {
             if (authReq.user && coupon.email.toLowerCase() !== authReq.user.email.toLowerCase()) {
-                return res.status(400).json(new response_1.ApiResponse(false, 'This 10% off code belongs to another account', null, 400));
+                return res.status(400).json(new response_1.ApiResponse(false, 'This coupon code belongs to another account', null, 400));
             }
             if (authReq.user) {
                 const usedNewsletterCoupon = await Coupon_1.default.findOne({
                     userId: authReq.user.userId,
                     source: 'newsletter',
-                    isUsed: true
+                    isUsed: true,
                 });
                 if (usedNewsletterCoupon) {
-                    return res.status(400).json(new response_1.ApiResponse(false, 'You have already used a 10% off welcome code (only 1 allowed per user in a lifetime)', null, 400));
+                    return res.status(400).json(new response_1.ApiResponse(false, 'You have already used a newsletter coupon (only 1 allowed per account)', null, 400));
                 }
             }
         }
-        // Check expiry
-        if (new Date() > coupon.expiresAt) {
-            return res.status(400).json(new response_1.ApiResponse(false, 'This coupon has expired', null, 400));
+        // Run the core validation algorithm (Req 12.1–12.3)
+        const result = computeCouponDiscount(coupon, parsedOrderAmount, cartItems);
+        if (!result.valid) {
+            return res.status(400).json(new response_1.ApiResponse(false, result.reason, null, 400));
         }
-        // Check minimum order amount
-        if (orderAmount && coupon.minOrderAmount > 0 && orderAmount < coupon.minOrderAmount) {
-            return res.status(400).json(new response_1.ApiResponse(false, `Minimum order amount is ₹${coupon.minOrderAmount}`, null, 400));
-        }
-        // Calculate discount
-        let discount = 0;
-        if (coupon.discountType === 'percentage') {
-            discount = orderAmount ? (orderAmount * coupon.discountValue) / 100 : 0;
-            if (coupon.maxDiscount > 0 && discount > coupon.maxDiscount) {
-                discount = coupon.maxDiscount;
-            }
-        }
-        else {
-            discount = coupon.discountValue;
-        }
-        res.status(200).json(new response_1.ApiResponse(true, 'Coupon is valid!', {
+        return res.status(200).json(new response_1.ApiResponse(true, 'Coupon is valid', {
             code: coupon.code,
             discountType: coupon.discountType,
             discountValue: coupon.discountValue,
             maxDiscount: coupon.maxDiscount,
             minOrderAmount: coupon.minOrderAmount,
-            calculatedDiscount: Math.round(discount),
+            categoryRestrictions: coupon.categoryRestrictions ?? [],
+            discountAmount: result.discountAmount,
         }));
     }
     catch (error) {
-        res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to validate coupon', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to validate coupon', null, 500));
     }
 });
 /**
@@ -129,15 +175,17 @@ router.post('/apply', auth_1.verifyToken, async (req, res) => {
         }
         coupon.isUsed = true;
         coupon.usedAt = new Date();
-        if (orderId)
+        if (orderId && typeof orderId === 'string' && orderId.length > 0) {
             coupon.usedOrderId = new mongoose_1.default.Types.ObjectId(orderId);
-        if (authReq.user?.userId)
+        }
+        if (authReq.user?.userId) {
             coupon.userId = new mongoose_1.default.Types.ObjectId(authReq.user.userId);
+        }
         await coupon.save();
-        res.status(200).json(new response_1.ApiResponse(true, 'Coupon applied successfully', coupon));
+        return res.status(200).json(new response_1.ApiResponse(true, 'Coupon applied successfully', coupon));
     }
     catch (error) {
-        res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to apply coupon', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to apply coupon', null, 500));
     }
 });
 /**
@@ -171,7 +219,7 @@ router.get('/admin/all', auth_1.verifyToken, auth_1.verifyAdmin, async (req, res
  */
 router.post('/admin/create', auth_1.verifyToken, auth_1.verifyAdmin, async (req, res) => {
     try {
-        const { email, discountType, discountValue, minOrderAmount, maxDiscount, expiresInDays, source } = req.body;
+        const { email, discountType, discountValue, minOrderAmount, maxDiscount, expiresInDays, source, maxUses } = req.body;
         const code = generateUniqueCode('MSVIP');
         const coupon = await Coupon_1.default.create({
             code,
@@ -180,13 +228,14 @@ router.post('/admin/create', auth_1.verifyToken, auth_1.verifyAdmin, async (req,
             discountValue: discountValue || 10,
             minOrderAmount: minOrderAmount || 0,
             maxDiscount: maxDiscount || 0,
+            maxUses: maxUses || 0,
             expiresAt: new Date(Date.now() + (expiresInDays || 30) * 24 * 60 * 60 * 1000),
             source: source || 'admin',
         });
-        res.status(201).json(new response_1.ApiResponse(true, 'Coupon created', coupon));
+        return res.status(201).json(new response_1.ApiResponse(true, 'Coupon created', coupon));
     }
     catch (error) {
-        res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to create coupon', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to create coupon', null, 500));
     }
 });
 // New route: Generate a unique newsletter coupon for a user (10% off, one-time use)

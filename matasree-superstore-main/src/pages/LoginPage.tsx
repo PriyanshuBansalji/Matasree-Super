@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuthStore } from '@/store/authStore';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/services/api';
+import PageHelmet from '@/components/PageHelmet';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -142,6 +143,12 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+      <PageHelmet
+        title="Login | Matasree Super Masale"
+        description="Sign in to your Matasree Super Masale account to manage orders, addresses, and more."
+        canonicalUrl="https://matasreesuper.com/login"
+        noIndex={true}
+      />
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-amber-100/30 to-orange-100/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
@@ -150,7 +157,7 @@ const LoginPage = () => {
 
       <Navbar />
 
-      <main className="flex-1 container mx-auto px-4 py-12 flex items-center justify-center relative z-10">
+      <main id="main-content" className="flex-1 container mx-auto px-4 py-12 flex items-center justify-center relative z-10">
         <Card className="w-full max-w-md shadow-2xl backdrop-blur-sm border border-white/50">
           <CardHeader className="space-y-2 bg-gradient-to-br from-amber-50 to-orange-50">
             <div className="flex items-center gap-3 mb-2">
@@ -257,11 +264,13 @@ const LoginPage = () => {
                         : 'border-gray-200 hover:border-amber-300'
                     }`}
                     disabled={isLoading}
+                    aria-describedby={touched.email && errors.email ? 'login-email-error' : undefined}
+                    aria-invalid={!!(touched.email && errors.email)}
                   />
                 </div>
                 {touched.email && errors.email && (
-                  <div className="flex items-center gap-2 text-red-600 text-sm">
-                    <AlertCircle className="w-4 h-4" />
+                  <div id="login-email-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                    <AlertCircle className="w-4 h-4" aria-hidden="true" />
                     {errors.email}
                   </div>
                 )}
@@ -291,18 +300,21 @@ const LoginPage = () => {
                         : 'border-gray-200 hover:border-amber-300'
                     }`}
                     disabled={isLoading}
+                    aria-describedby={touched.password && errors.password ? 'login-password-error' : undefined}
+                    aria-invalid={!!(touched.password && errors.password)}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-amber-600 transition-colors"
                   >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
                   </button>
                 </div>
                 {touched.password && errors.password && (
-                  <div className="flex items-center gap-2 text-red-600 text-sm">
-                    <AlertCircle className="w-4 h-4" />
+                  <div id="login-password-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                    <AlertCircle className="w-4 h-4" aria-hidden="true" />
                     {errors.password}
                   </div>
                 )}

@@ -10,8 +10,27 @@ import { ApiResponse, ApiError } from '../utils/response';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { sendOTPEmail, sendOTPSMS } from '../utils/email';
 import { issueTokens, rotateRefreshToken, revokeAllTokens, revokeToken, clearRefreshCookie } from '../services/authService';
+import { generateReferralCode } from '../services/referralService';
 import logger from '../config/logger';
 import Joi from 'joi';
+
+// ============================================================
+// OAUTH TOKEN STORAGE (for secure one-time token retrieval)
+// ============================================================
+// Temporary storage: { userId: { accessToken, expiresAt, user } }
+// Token is consumed exactly once and cleaned up after 5 minutes
+const oauthTokenStore: Record<string, { accessToken: string; expiresAt: number; user: any }> = {};
+
+// Cleanup expired tokens every minute
+setInterval(() => {
+  const now = Date.now();
+  Object.entries(oauthTokenStore).forEach(([userId, data]) => {
+    if (data.expiresAt < now) {
+      delete oauthTokenStore[userId];
+      logger.debug(`Cleaned up expired OAuth token for user ${userId}`);
+    }
+  });
+}, 60000);
 
 // ============================================================
 // VALIDATION SCHEMAS
@@ -29,6 +48,44 @@ const loginSchema = Joi.object({
   password: Joi.string().required(),
 });
 
+const updateProfileSchema = Joi.object({
+  name: Joi.string().trim().min(2).max(100).optional(),
+  phone: Joi.string().trim().optional(),
+});
+
+const sendEmailOtpSchema = Joi.object({
+  email: Joi.string().email().required().lowercase(),
+});
+
+const verifyEmailOtpSchema = Joi.object({
+  email: Joi.string().email().required().lowercase(),
+  otp: Joi.string().length(6).required(),
+});
+
+const sendMobileOtpSchema = Joi.object({
+  mobile: Joi.string().required().trim(),
+});
+
+const verifyMobileOtpSchema = Joi.object({
+  mobile: Joi.string().required().trim(),
+  otp: Joi.string().length(6).required(),
+});
+
+const sendPasswordResetOtpSchema = Joi.object({
+  email: Joi.string().email().required().lowercase(),
+});
+
+const verifyPasswordResetOtpSchema = Joi.object({
+  email: Joi.string().email().required().lowercase(),
+  otp: Joi.string().length(6).required(),
+});
+
+const resetPasswordSchema = Joi.object({
+  email: Joi.string().email().required().lowercase(),
+  otp: Joi.string().length(6).required(),
+  newPassword: Joi.string().min(6).max(128).required(),
+});
+
 // ============================================================
 // LOCAL AUTH (Email + Password)
 // ============================================================
@@ -38,7 +95,7 @@ const loginSchema = Joi.object({
  */
 export const register = async (req: any, res: Response) => {
   try {
-    const { error, value } = registerSchema.validate(req.body);
+    const { error, value } = registerSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }
@@ -64,10 +121,18 @@ export const register = async (req: any, res: Response) => {
       provider: 'local',
     });
 
+    // Generate and assign a unique referral code for the new user (Req 11.1)
+    try {
+      await generateReferralCode(user._id);
+    } catch (referralErr: any) {
+      // Non-fatal — log and continue; registration should not fail because of this
+      logger.warn(`[register] Could not generate referral code for user ${user._id.toString()}: ${referralErr.message}`);
+    }
+
     // Issue tokens (access + refresh with HTTP-only cookie)
     const { accessToken } = await issueTokens(user, res, {
-      userAgent: req.headers['user-agent'],
-      ipAddress: req.ip,
+      ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
     });
 
     logger.info(`New user registered: ${email}`);
@@ -80,7 +145,6 @@ export const register = async (req: any, res: Response) => {
           email: user.email,
           role: user.role,
           avatar: user.avatar,
-          isAdmin: user.isAdmin || false,
         },
         accessToken,
       })
@@ -96,7 +160,7 @@ export const register = async (req: any, res: Response) => {
  */
 export const login = async (req: any, res: Response) => {
   try {
-    const { error, value } = loginSchema.validate(req.body);
+    const { error, value } = loginSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }
@@ -124,8 +188,8 @@ export const login = async (req: any, res: Response) => {
 
     // Issue tokens
     const { accessToken } = await issueTokens(user, res, {
-      userAgent: req.headers['user-agent'],
-      ipAddress: req.ip,
+      ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
     });
 
     logger.info(`User logged in: ${email}`);
@@ -138,7 +202,6 @@ export const login = async (req: any, res: Response) => {
           email: user.email,
           role: user.role,
           avatar: user.avatar,
-          isAdmin: user.isAdmin || false,
         },
         accessToken,
       })
@@ -166,8 +229,8 @@ export const refreshToken = async (req: any, res: Response) => {
     }
 
     const result = await rotateRefreshToken(token, res, {
-      userAgent: req.headers['user-agent'],
-      ipAddress: req.ip,
+      ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
     });
 
     res.status(200).json(
@@ -189,7 +252,8 @@ export const refreshToken = async (req: any, res: Response) => {
 
 /**
  * Handle OAuth callback (used for both Google and GitHub)
- * Issues tokens and redirects to frontend with access token
+ * Stores token in memory and redirects to frontend without token in URL
+ * Frontend fetches token from GET /api/auth/token endpoint
  */
 export const oauthCallback: RequestHandler = async (req, res) => {
   try {
@@ -198,30 +262,84 @@ export const oauthCallback: RequestHandler = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8000'}/login?error=auth_failed`);
     }
 
-    // Issue tokens
+    // Issue tokens (refresh token set as httpOnly cookie by issueTokens)
     const { accessToken } = await issueTokens(user, res, {
-      userAgent: req.headers['user-agent'] as string,
-      ipAddress: req.ip,
-    } as any);
+      ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] as string } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
+    });
 
-    // Redirect to frontend with access token in URL (frontend will extract and store it)
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8000';
-    const redirectUrl = `${frontendUrl}/auth/callback?token=${accessToken}&user=${encodeURIComponent(
-      JSON.stringify({
+    // Store token in memory for one-time retrieval by frontend (expires in 5 minutes)
+    oauthTokenStore[user._id.toString()] = {
+      accessToken,
+      expiresAt: Date.now() + 5 * 60 * 1000,
+      user: {
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
         avatar: user.avatar,
-        isAdmin: user.isAdmin || false,
-      })
-    )}`;
+      },
+    };
 
-    logger.info(`OAuth login successful: ${user.email} (${user.provider})`);
+    // Redirect to frontend WITHOUT token in URL (secure against URL history leaks)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8000';
+    const redirectUrl = `${frontendUrl}/auth/callback`;
+
+    logger.info(`OAuth login successful: ${user.email} (${user.provider}), token stored for retrieval`);
     res.redirect(redirectUrl);
   } catch (error: any) {
     logger.error('OAuth callback error:', error);
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8000'}/login?error=auth_failed`);
+  }
+};
+
+// ============================================================
+// OAUTH TOKEN RETRIEVAL (secure, one-time, cookie-authenticated)
+// ============================================================
+
+/**
+ * Get OAuth access token (called by frontend after OAuth redirect)
+ * Returns token exactly once, then destroys it
+ * Requires valid httpOnly refresh cookie from OAuth flow
+ */
+export const getOAuthToken: RequestHandler = async (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json(new ApiResponse(false, 'Unauthorized', null, 401));
+    }
+
+    const userIdStr = userId.toString();
+    const tokenData = oauthTokenStore[userIdStr];
+
+    // Token not found or expired
+    if (!tokenData) {
+      return res.status(401).json(new ApiResponse(false, 'No token available. Please log in again.', null, 401));
+    }
+
+    // Token expired
+    if (tokenData.expiresAt < Date.now()) {
+      delete oauthTokenStore[userIdStr];
+      return res.status(401).json(new ApiResponse(false, 'Token expired. Please log in again.', null, 401));
+    }
+
+    // Consume token exactly once
+    const { accessToken, user } = tokenData;
+    delete oauthTokenStore[userIdStr];
+
+    logger.info(`OAuth token retrieved and consumed for user ${userId}`);
+
+    res.status(200).json(
+      new ApiResponse(true, 'OAuth token retrieved', {
+        accessToken,
+        user,
+      })
+    );
+  } catch (error: any) {
+    logger.error('Get OAuth token error:', error);
+    res.status(500).json(new ApiResponse(false, error.message || 'Failed to retrieve OAuth token', null, 500));
   }
 };
 
@@ -310,7 +428,11 @@ export const getProfile: RequestHandler = async (req, res) => {
  */
 export const updateProfile: RequestHandler = async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { error, value } = updateProfileSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
+    }
+    const { name, phone } = value;
     const authReq = req as AuthenticatedRequest;
     const user = await User.findByIdAndUpdate(
       authReq.user?.userId,
@@ -352,8 +474,11 @@ function generateOTP(): string {
 /** Send email OTP */
 export const sendEmailOtp = async (req: any, res: Response) => {
   try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json(new ApiResponse(false, 'Email is required', null, 400));
+    const { error, value } = sendEmailOtpSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { email } = value;
 
     const existingUser = await User.findOne({ email });
     if (existingUser) return res.status(400).json(new ApiResponse(false, 'Email already registered', null, 400));
@@ -379,8 +504,11 @@ export const sendEmailOtp = async (req: any, res: Response) => {
 /** Verify email OTP */
 export const verifyEmailOtp = async (req: any, res: Response) => {
   try {
-    const { email, otp } = req.body;
-    if (!email || !otp) return res.status(400).json(new ApiResponse(false, 'Email and OTP are required', null, 400));
+    const { error, value } = verifyEmailOtpSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { email, otp } = value;
 
     const stored = emailOtpStore[email];
     if (!stored) return res.status(400).json(new ApiResponse(false, 'OTP not found or expired', null, 400));
@@ -398,8 +526,11 @@ export const verifyEmailOtp = async (req: any, res: Response) => {
 /** Resend email OTP */
 export const resendEmailOtp = async (req: any, res: Response) => {
   try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json(new ApiResponse(false, 'Email is required', null, 400));
+    const { error, value } = sendEmailOtpSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { email } = value;
 
     const otp = generateOTP();
     emailOtpStore[email] = { otp, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 };
@@ -419,8 +550,11 @@ export const resendEmailOtp = async (req: any, res: Response) => {
 /** Send mobile OTP */
 export const sendMobileOtp = async (req: any, res: Response) => {
   try {
-    const { mobile } = req.body;
-    if (!mobile) return res.status(400).json(new ApiResponse(false, 'Mobile number is required', null, 400));
+    const { error, value } = sendMobileOtpSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { mobile } = value;
 
     const otp = generateOTP();
     otpStore[mobile] = { otp, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 };
@@ -440,8 +574,11 @@ export const sendMobileOtp = async (req: any, res: Response) => {
 /** Verify mobile OTP */
 export const verifyMobileOtp = async (req: any, res: Response) => {
   try {
-    const { mobile, otp } = req.body;
-    if (!mobile || !otp) return res.status(400).json(new ApiResponse(false, 'Mobile number and OTP are required', null, 400));
+    const { error, value } = verifyMobileOtpSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { mobile, otp } = value;
 
     const stored = otpStore[mobile];
     if (!stored) return res.status(400).json(new ApiResponse(false, 'OTP not found or expired', null, 400));
@@ -459,8 +596,11 @@ export const verifyMobileOtp = async (req: any, res: Response) => {
 /** Resend mobile OTP */
 export const resendMobileOtp = async (req: any, res: Response) => {
   try {
-    const { mobile } = req.body;
-    if (!mobile) return res.status(400).json(new ApiResponse(false, 'Mobile number is required', null, 400));
+    const { error, value } = sendMobileOtpSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { mobile } = value;
 
     const otp = generateOTP();
     otpStore[mobile] = { otp, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 };
@@ -480,8 +620,11 @@ export const resendMobileOtp = async (req: any, res: Response) => {
 /** Send password reset OTP */
 export const sendPasswordResetOtp = async (req: any, res: Response) => {
   try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json(new ApiResponse(false, 'Email is required', null, 400));
+    const { error, value } = sendPasswordResetOtpSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { email } = value;
 
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json(new ApiResponse(false, 'No account found with this email', null, 404));
@@ -504,8 +647,11 @@ export const sendPasswordResetOtp = async (req: any, res: Response) => {
 /** Verify password reset OTP */
 export const verifyPasswordResetOtp = async (req: any, res: Response) => {
   try {
-    const { email, otp } = req.body;
-    if (!email || !otp) return res.status(400).json(new ApiResponse(false, 'Email and OTP are required', null, 400));
+    const { error, value } = verifyPasswordResetOtpSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { email, otp } = value;
 
     const stored = passwordResetOtpStore[email];
     if (!stored) return res.status(400).json(new ApiResponse(false, 'OTP not found or expired', null, 400));
@@ -522,8 +668,11 @@ export const verifyPasswordResetOtp = async (req: any, res: Response) => {
 /** Reset password */
 export const resetPassword = async (req: any, res: Response) => {
   try {
-    const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) return res.status(400).json(new ApiResponse(false, 'Email, OTP, and new password are required', null, 400));
+    const { error, value } = resetPasswordSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.details[0].message });
+    }
+    const { email, otp, newPassword } = value;
 
     const stored = passwordResetOtpStore[email];
     if (!stored) return res.status(400).json(new ApiResponse(false, 'OTP not found or expired', null, 400));

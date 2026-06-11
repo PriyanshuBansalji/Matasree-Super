@@ -8,6 +8,7 @@ import { apiClient } from '@/services/api';
 import { toast } from 'sonner';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import PageHelmet from '@/components/PageHelmet';
 
 interface PartnershipForm {
   fullName: string;
@@ -204,6 +205,12 @@ const PartnershipPage = () => {
 
   return (
     <>
+      <PageHelmet
+        title="Partnership | Matasree Super Masale"
+        description="Become a Matasree Super Masale partner — explore distribution, wholesale, and reseller opportunities for authentic Indian spices."
+        canonicalUrl="https://matasreesuper.com/partnership"
+        ogType="website"
+      />
       <Navbar />
       <div className="min-h-screen bg-gradient-to-b from-background via-background to-accent/5 pt-24 pb-16">
         <div className="container mx-auto px-4">

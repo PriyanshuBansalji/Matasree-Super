@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { ChevronLeft, Search, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import PageHelmet from '@/components/PageHelmet';
 
 interface User {
   _id: string;
@@ -121,6 +122,12 @@ const AdminUsers = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <PageHelmet
+        title="Admin: Users | Matasree Super Masale"
+        description="Manage users on Matasree Super Masale admin panel."
+        canonicalUrl="https://matasreesuper.com/admin/users"
+        noIndex={true}
+      />
       <Navbar />
 
       <div className="container mx-auto px-4 py-8">

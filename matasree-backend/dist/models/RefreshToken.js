@@ -67,6 +67,10 @@ const refreshTokenSchema = new mongoose_1.Schema({
     ipAddress: {
         type: String,
     },
+    oauthPending: {
+        type: Boolean,
+        default: false,
+    },
 }, { timestamps: true });
 // Compound index for efficient lookups
 refreshTokenSchema.index({ userId: 1, isRevoked: 1 });

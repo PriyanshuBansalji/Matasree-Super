@@ -4,6 +4,7 @@
  * Prevents runtime errors from missing configuration
  */
 import { z } from 'zod';
+import logger from './logger';
 
 const envSchema = z.object({
   // Server
@@ -77,3 +78,37 @@ export const validateEnv = () => {
 
 export type EnvConfig = z.infer<typeof envSchema>;
 export const env = validateEnv();
+
+// ============================================================
+// JWT WEAK-SECRET DETECTION
+// Requirements: 30.1, 30.2, 30.3, 30.4, 30.5
+// ============================================================
+
+const WEAK_SECRETS = new Set([
+  'secret',
+  'your-secret-key',
+  'changeme',
+  'jwt_secret',
+  'default_secret',
+  'your_super_secret_jwt_key_here_change_in_production',
+]);
+
+/**
+ * Validates that a JWT secret env var is not absent, empty, or a known-weak default.
+ * In production: logs a fatal error and exits immediately.
+ * In development/test: logs a warning so engineers know to change it before deploying.
+ */
+function validateJwtSecret(key: 'JWT_SECRET' | 'JWT_REFRESH_SECRET'): void {
+  const value = process.env[key];
+  const isWeak = !value || WEAK_SECRETS.has(value);
+  if (!isWeak) return;
+  if (process.env.NODE_ENV === 'production') {
+    logger.error(`[FATAL] ${key} is a known weak default. Server startup aborted.`);
+    process.exit(1);
+  } else {
+    logger.warn(`[WARN] ${key} is using a weak default value. Change it before deploying.`);
+  }
+}
+
+validateJwtSecret('JWT_SECRET');
+validateJwtSecret('JWT_REFRESH_SECRET');

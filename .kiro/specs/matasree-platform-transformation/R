@@ -1,0 +1,549 @@
+# Requirements Document
+
+## Introduction
+
+Matasree Super Masale is a premium Indian spices e-commerce platform built on React 18 + TypeScript + Vite + Tailwind + shadcn/ui + Framer Motion (frontend) and Node.js + Express + TypeScript + MongoDB (backend). The platform currently has 25 pages, 11 data models, JWT + OAuth authentication, cart, checkout with Razorpay, coupon system, wishlist store, order management, admin dashboard, a Review model, partnership form, and email notifications.
+
+This document defines the requirements for the **Matasree Platform Transformation** — a comprehensive upgrade across eight areas: customer experience, conversion optimization, brand building, UI/UX, performance, SEO, security, and codebase quality. All requirements are scoped to the existing tech stack. New backend models or fields are introduced only where the existing schema is insufficient.
+
+---
+
+## Glossary
+
+- **Platform**: The full-stack Matasree Super Masale application (frontend + backend).
+- **Search_Service**: The backend endpoint and frontend component responsible for full-text product search with autocomplete suggestions.
+- **Filter_Panel**: The frontend component that applies multi-dimensional product filters (price, category, weight, rating, stock).
+- **Wishlist_API**: The new backend REST API that persists user wishlists to MongoDB (supplements the existing Zustand client-side store).
+- **Recently_Viewed_Service**: The service that tracks and returns the last N products a user has viewed.
+- **Comparison_Tool**: The frontend component enabling side-by-side comparison of up to four products.
+- **Quick_View**: The modal component that displays a product summary without navigating away from the listing page.
+- **Review_System**: The wired-up combination of the existing Review model and Product model to display and accept product-specific reviews.
+- **Loyalty_Engine**: The backend service managing loyalty points accrual, redemption, and balance for each customer.
+- **Referral_Engine**: The backend service managing refer-and-earn codes, reward payouts, and referred-user tracking.
+- **Coupon_Engine**: The enhanced coupon validation and application service, including multi-use and stacking rules.
+- **Cart_Sync**: The pre-checkout operation that reconciles the client-side cart state with the backend Cart document.
+- **Abandonment_Flow**: The scheduled email sequence sent to users who have items in their cart but have not completed checkout within a configurable period.
+- **SEO_Layer**: The combination of react-helmet-async meta tags, Open Graph tags, JSON-LD structured data, sitemap.xml, and robots.txt.
+- **Order_Timeline**: The visual frontend component showing the status progression of an order (pending → confirmed → shipped → delivered).
+- **Admin**: A user with `role: 'admin'` in the User model.
+- **Customer**: A user with `role: 'customer'` in the User model.
+- **JWT_Secret**: The value of the `JWT_SECRET` environment variable used to sign access tokens.
+- **OAuth_Callback**: The server-side handler (`oauthCallback` in authController.ts) that redirects to the frontend after OAuth login.
+- **Cancel_Order_Route**: The missing `DELETE /api/orders/:id` or `PUT /api/orders/:id/cancel` backend route that allows a customer to cancel a pending order.
+- **Validation_Library**: The single server-side input-validation library chosen to replace the current mixture of Joi, Zod, and express-validator.
+- **Spice_Guide**: An interactive frontend page teaching users about spice origins, uses, and pairings.
+- **Skeleton_Loader**: A placeholder UI element that mimics the layout of content while it is loading.
+- **ARIA**: Accessible Rich Internet Applications attributes used to improve screen-reader and keyboard accessibility.
+
+---
+
+## Requirements
+
+---
+
+### Requirement 1: Smart Product Search with Suggestions
+
+**User Story:** As a customer, I want to search for products by name, tag, or keyword and see instant suggestions, so that I can find what I want without browsing every category.
+
+#### Acceptance Criteria
+
+1. WHEN a customer types at least 2 characters into the search input, THE Search_Service SHALL return a list of matching product suggestions within 300 ms.
+2. THE Search_Service SHALL match against product name, description, and tags using the existing MongoDB text index on the Product collection.
+3. WHEN the customer selects a suggestion, THE Platform SHALL navigate to the matching product detail page or filtered results page within 200 ms.
+4. IF the search query returns zero results, THEN THE Search_Service SHALL return an empty array and THE Platform SHALL display a "No products found" empty state with a suggestion to browse categories.
+5. WHEN a customer submits a full search query, THE Platform SHALL display a results page with products filtered by the query, with count displayed.
+6. THE Search_Service SHALL accept a `q` query parameter of maximum 200 characters; IF the parameter exceeds 200 characters, THEN THE Search_Service SHALL return HTTP 400.
+
+---
+
+### Requirement 2: Advanced Product Filtering
+
+**User Story:** As a customer, I want to filter products by price range, category, weight, rating, and stock availability, so that I can narrow results to products that match my needs.
+
+#### Acceptance Criteria
+
+1. THE Filter_Panel SHALL support simultaneous filtering by: price range (min–max in INR), category (single or multi-select), weight (100g, 250g, 500g, 1kg, 2kg), minimum rating (1–5 stars), and in-stock only toggle.
+2. WHEN a customer applies one or more filters, THE Platform SHALL update the product list without a full page reload within 500 ms.
+3. WHEN the customer clears all filters, THE Platform SHALL restore the default unfiltered product list.
+4. IF no products match the applied filters, THEN THE Filter_Panel SHALL display a "No products match your filters" empty state with a "Clear filters" action.
+5. THE Platform SHALL reflect active filters in the URL query string so that filtered results can be bookmarked and shared.
+6. WHILE a filtered request is in flight, THE Platform SHALL display skeleton loaders in place of product cards.
+
+---
+
+### Requirement 3: Wishlist Backend API
+
+**User Story:** As a logged-in customer, I want my wishlist to be saved to the server, so that I can access it from any device and it persists across sessions.
+
+#### Acceptance Criteria
+
+1. THE Wishlist_API SHALL expose the following authenticated endpoints: `GET /api/wishlist`, `POST /api/wishlist/:productId`, `DELETE /api/wishlist/:productId`.
+2. WHEN a customer adds a product to the wishlist, THE Wishlist_API SHALL store the product reference in the user's server-side wishlist document and return HTTP 201.
+3. IF the customer attempts to add a product that is already in their wishlist, THEN THE Wishlist_API SHALL return HTTP 409 with an appropriate message.
+4. WHEN a customer removes a product from the wishlist, THE Wishlist_API SHALL delete the reference and return HTTP 200.
+5. WHEN a customer retrieves their wishlist, THE Wishlist_API SHALL return the full list of wishlist products with populated name, price, image, and stock fields.
+6. IF a product referenced in the wishlist has been deleted from the catalog, THEN THE Wishlist_API SHALL omit that product from the list response and remove the stale reference.
+
+---
+
+### Requirement 4: Recently Viewed Products
+
+**User Story:** As a customer, I want to see the last several products I viewed, so that I can easily return to items I was considering.
+
+#### Acceptance Criteria
+
+1. WHEN a customer views a product detail page, THE Recently_Viewed_Service SHALL record the product ID and timestamp in the user's session or profile (up to a maximum of 10 entries, discarding the oldest).
+2. THE Platform SHALL display the recently viewed products list on the homepage and product detail pages.
+3. WHEN a customer is not logged in, THE Platform SHALL store recently viewed products in localStorage and display up to 10 entries.
+4. WHEN a logged-in customer views a product, THE Platform SHALL merge the localStorage list with their server-side recently viewed list, deduplicating by product ID.
+5. IF a product in the recently viewed list has been deleted, THEN THE Recently_Viewed_Service SHALL omit it from the display.
+
+---
+
+### Requirement 5: Product Comparison Tool
+
+**User Story:** As a customer, I want to compare up to four products side-by-side, so that I can make an informed purchase decision.
+
+#### Acceptance Criteria
+
+1. THE Comparison_Tool SHALL allow a customer to add up to 4 products to a comparison tray from any product card or product detail page.
+2. IF a customer attempts to add a fifth product to the comparison tray, THEN THE Comparison_Tool SHALL display a message stating "You can compare up to 4 products at a time."
+3. WHEN the customer opens the comparison view, THE Comparison_Tool SHALL display product attributes side-by-side including: name, price, rating, weight, category, stock status, and description.
+4. WHEN a customer removes a product from the comparison tray, THE Comparison_Tool SHALL update the comparison view immediately without page reload.
+5. THE Comparison_Tool SHALL persist the comparison tray contents in component state for the duration of the browser session.
+
+---
+
+### Requirement 6: Quick View Modal
+
+**User Story:** As a customer, I want to preview a product's key details in a modal without leaving the listing page, so that I can decide whether to view the full details or add it to my cart quickly.
+
+#### Acceptance Criteria
+
+1. WHEN a customer activates the "Quick View" action on a product card, THE Quick_View SHALL open a modal displaying: product images, name, price, rating, weight options, short description, stock status, and Add-to-Cart button.
+2. WHEN the customer clicks Add-to-Cart inside the Quick_View, THE Platform SHALL add the product to the cart and close the modal upon success.
+3. WHEN the customer dismisses the Quick_View modal, THE Platform SHALL restore focus to the triggering product card (ARIA focus management).
+4. THE Quick_View SHALL be keyboard accessible and include a visible close button with `aria-label="Close quick view"`.
+5. WHILE the Quick_View data is loading, THE Quick_View SHALL display a skeleton loader.
+
+---
+
+### Requirement 7: Related Products and Frequently Bought Together
+
+**User Story:** As a customer, I want to see related products and common product pairings on the product detail page, so that I discover complementary items and increase the value of my order.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL display a "Related Products" section on each product detail page containing up to 8 products from the same category, excluding the current product.
+2. THE Platform SHALL display a "Frequently Bought Together" section on each product detail page containing up to 3 products that are commonly ordered alongside the current product.
+3. WHEN the backend does not have sufficient co-purchase data for "Frequently Bought Together", THE Platform SHALL fall back to displaying top-selling products from the same category.
+4. WHEN a customer adds a related or frequently bought together product to the cart from the product detail page, THE Platform SHALL update the cart count in the header.
+5. THE Platform SHALL lazy-load the Related Products and Frequently Bought Together sections after the main product content has rendered.
+
+---
+
+### Requirement 8: Ratings and Reviews (Wired to Product)
+
+**User Story:** As a customer, I want to read and submit reviews for a specific product, so that I can make informed purchases and share my experience with other buyers.
+
+#### Acceptance Criteria
+
+1. THE Review_System SHALL associate each Review document with a specific Product via the existing `productId` field on the Review model.
+2. WHEN a customer submits a review for a product, THE Review_System SHALL require: a rating (integer 1–5), a review comment (10–1000 characters), and the customer's name; the `userId` SHALL be set from the authenticated session.
+3. IF a customer who has not purchased the product attempts to submit a review, THEN THE Review_System SHALL return HTTP 403 with the message "You must purchase this product before reviewing it."
+4. WHEN a review is submitted, THE Review_System SHALL set `isApproved: false` by default and notify the Admin via email.
+5. WHEN an Admin approves a review, THE Review_System SHALL set `isApproved: true` and THE Platform SHALL recompute the product's `rating` field as the arithmetic mean of all approved ratings for that product, rounded to one decimal place.
+6. THE Platform SHALL display approved reviews on the product detail page, sorted by `createdAt` descending, with pagination of 10 reviews per page.
+7. THE Review_System SHALL prevent a customer from submitting more than one review per product; IF a duplicate review submission is detected, THEN THE Review_System SHALL return HTTP 409.
+8. WHERE a product has no approved reviews, THE Platform SHALL display a "Be the first to review this product" prompt.
+
+---
+
+### Requirement 9: Testimonials and Recipe Section
+
+**User Story:** As a visitor, I want to read customer testimonials and recipes that use Matasree spices, so that I feel confident in the brand and discover new ways to use the products.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL display a Testimonials section on the homepage that shows reviews where `isFeatured: true` from the Review model.
+2. THE Platform SHALL include a dedicated Recipes page listing recipes that reference Matasree products, with each recipe containing: title, ingredients list, step-by-step instructions, and associated product tags.
+3. WHEN a visitor filters recipes by a product tag, THE Platform SHALL display only recipes that include that tag.
+4. THE Platform SHALL display seasonal banners on the homepage that are configurable by an Admin; each banner SHALL include: image, title, subtitle, call-to-action link, and an active date range.
+5. WHEN the current date is outside a banner's active date range, THE Platform SHALL not display that banner.
+
+---
+
+### Requirement 10: Loyalty Rewards Points
+
+**User Story:** As a customer, I want to earn loyalty points on purchases and redeem them for discounts, so that I am incentivised to return and buy more.
+
+#### Acceptance Criteria
+
+1. THE Loyalty_Engine SHALL award 1 loyalty point for every ₹10 spent (rounded down) when an order's `paymentStatus` transitions to `paid` or when a COD order's `orderstatus` transitions to `delivered`.
+2. WHEN a customer redeems loyalty points at checkout, THE Loyalty_Engine SHALL apply a discount of ₹0.50 per point redeemed, subject to a maximum redemption of 50% of the order's subtotal.
+3. IF a customer attempts to redeem more points than their current balance, THEN THE Loyalty_Engine SHALL return HTTP 400 with the message "Insufficient loyalty points."
+4. THE Platform SHALL display the customer's current loyalty point balance on their profile page and during checkout.
+5. WHEN an order is cancelled, THE Loyalty_Engine SHALL reverse the points awarded for that order.
+6. THE Loyalty_Engine SHALL record each points transaction (earn or redeem) with: userId, orderId, points delta, reason, and timestamp.
+
+---
+
+### Requirement 11: Refer and Earn
+
+**User Story:** As a customer, I want to refer friends to Matasree and earn a reward when they make their first purchase, so that I benefit from introducing the brand to others.
+
+#### Acceptance Criteria
+
+1. THE Referral_Engine SHALL generate a unique referral code for each registered customer upon account creation.
+2. WHEN a new customer registers using a referral code, THE Referral_Engine SHALL record the referral relationship linking the new customer to the referrer.
+3. WHEN the referred customer completes their first paid order, THE Referral_Engine SHALL credit the referrer with 50 loyalty points and send an email notification to the referrer.
+4. IF a referral code used during registration does not match any existing customer, THEN THE Referral_Engine SHALL return HTTP 400 with the message "Invalid referral code."
+5. THE Platform SHALL display the customer's referral code and referral history (referee name, status, reward earned) on their profile page.
+6. THE Referral_Engine SHALL reject self-referral; IF a customer attempts to use their own referral code, THEN THE Referral_Engine SHALL return HTTP 400.
+
+---
+
+### Requirement 12: Coupon Engine Improvements
+
+**User Story:** As an Admin, I want to create and manage coupons with multi-use limits, category restrictions, and expiry rules, so that I can run targeted promotions without manual intervention.
+
+#### Acceptance Criteria
+
+1. THE Coupon_Engine SHALL validate a coupon code by checking: existence, expiry (`expiresAt`), usage count against `maxUses`, and whether the order meets `minOrderAmount`.
+2. WHEN `maxUses` is greater than 0, THE Coupon_Engine SHALL track the number of times a coupon has been redeemed and reject redemption when the count reaches `maxUses`, returning HTTP 400.
+3. THE Coupon_Engine SHALL support category-level restrictions: WHERE a coupon specifies a category restriction, THE Coupon_Engine SHALL apply the discount only to items in those categories.
+4. THE Platform SHALL persist the applied coupon code and the resulting `discountAmount` on the Order document at the time of order creation.
+5. WHEN a coupon is applied at checkout, THE Platform SHALL display the discount amount and the resulting total before the customer confirms the order.
+6. IF a coupon code is invalid for any reason, THEN THE Coupon_Engine SHALL return a descriptive HTTP 400 error message specifying the reason (expired, max uses reached, minimum order not met, invalid code).
+
+---
+
+### Requirement 13: Sticky Add-to-Cart and Conversion UI Elements
+
+**User Story:** As a customer browsing a product detail page, I want persistent access to the Add-to-Cart button and clear urgency indicators, so that I can act quickly without scrolling.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL render a sticky bottom bar on the product detail page that becomes visible WHEN the primary Add-to-Cart button is scrolled out of the viewport, containing: product name, price, and Add-to-Cart button.
+2. WHEN a product's `stock` field is between 1 and 9 inclusive, THE Platform SHALL display a low-stock indicator reading "Only [N] left in stock!" adjacent to the Add-to-Cart button on both the product card and product detail page.
+3. THE Platform SHALL display trust badges (secure payment, free delivery threshold, quality guarantee, easy returns) in a visible section of the product detail page and checkout page.
+4. THE Platform SHALL display social proof notifications (e.g., "X people bought this in the last 24 hours") on the product detail page WHERE such data is available from the `sold` field.
+5. WHEN a customer is about to leave the checkout page with items in the cart and has not completed purchase, THE Platform SHALL display an exit-intent offer modal once per session offering a time-limited discount code.
+
+---
+
+### Requirement 14: Cart Abandonment Email Flow
+
+**User Story:** As the store owner, I want to automatically email customers who abandon their cart, so that I can recover lost revenue.
+
+#### Acceptance Criteria
+
+1. THE Abandonment_Flow SHALL identify a cart as abandoned WHEN a logged-in customer's cart contains at least one item and the customer has not initiated checkout within 2 hours of the last cart modification.
+2. WHEN a cart is identified as abandoned, THE Abandonment_Flow SHALL send a reminder email to the customer's registered email address containing: a list of abandoned cart items with images and prices, a direct link to resume checkout, and an optional discount code (if configured by Admin).
+3. THE Abandonment_Flow SHALL send at most one abandonment email per cart abandonment event per customer (no repeated sequences unless re-triggered by a new cart update).
+4. IF the customer completes a purchase or empties their cart before the abandonment email is sent, THEN THE Abandonment_Flow SHALL cancel the pending email job.
+5. THE Platform SHALL allow Admins to configure the abandonment window (default 2 hours) and the optional discount code through the admin dashboard.
+
+---
+
+### Requirement 15: WhatsApp Ordering
+
+**User Story:** As a customer, I want to place or enquire about an order via WhatsApp, so that I can communicate in a familiar channel without using the checkout flow.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL display a "Order via WhatsApp" button on the product detail page and the cart page.
+2. WHEN a customer clicks "Order via WhatsApp", THE Platform SHALL open a pre-filled WhatsApp message containing: the product name(s), quantity, total price, and the store's WhatsApp number.
+3. THE WhatsApp button SHALL use the `https://wa.me/{number}` deep-link format with URL-encoded message content.
+4. THE Platform SHALL display the WhatsApp button only WHEN a WhatsApp phone number has been configured in the environment or admin settings.
+5. THE Platform SHALL include a visible WhatsApp floating action button on mobile viewports throughout the site, linking to the store's support WhatsApp number.
+
+---
+
+### Requirement 16: Enhanced About Page and Brand Content
+
+**User Story:** As a visitor, I want to learn about Matasree's brand story, manufacturing process, and quality standards, so that I trust the brand before purchasing.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL render an About page that includes: brand story section, manufacturing process section, quality assurance section, "Why Choose Us" section, and customer success stories section.
+2. THE Platform SHALL render an interactive Spice_Guide page where visitors can browse spices by region, flavor profile, and culinary use, with each spice linking to associated products.
+3. THE Platform SHALL display a regional recipes section on the Recipes page grouping recipes by Indian regional cuisine (e.g., North Indian, South Indian, Bengali, Rajasthani).
+4. THE "Why Choose Us" section SHALL include at least four value propositions with icons and supporting copy.
+5. THE Platform SHALL include ARIA landmark roles (`main`, `nav`, `aside`, `footer`) on all content pages for screen-reader navigation.
+
+---
+
+### Requirement 17: Homepage Redesign
+
+**User Story:** As a visitor, I want a visually compelling and fast homepage that highlights featured products, seasonal offers, and brand values, so that I immediately understand what Matasree offers.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL redesign the homepage to include: hero banner with call-to-action, featured categories section, bestseller products section, seasonal banner slot, testimonials section, and newsletter signup.
+2. THE Platform SHALL implement page transition animations using Framer Motion on route changes with a duration not exceeding 400 ms.
+3. THE Platform SHALL implement scroll-triggered animations for homepage sections using Framer Motion's `whileInView` prop.
+4. WHEN the homepage data is loading, THE Platform SHALL display skeleton loaders for the featured products and testimonials sections.
+5. THE Platform SHALL render the homepage with a Largest Contentful Paint (LCP) target below 2.5 seconds on a simulated 4G connection.
+
+---
+
+### Requirement 18: Improved Product Cards and Product Detail Page
+
+**User Story:** As a customer, I want product cards and detail pages that clearly present key information and allow smooth interactions, so that I can evaluate and purchase products with confidence.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL display on each product card: product image, name, price (with original price struck through if discounted), rating stars, weight, stock status badge, wishlist toggle, and Quick View trigger.
+2. THE Platform SHALL implement micro-interactions on product cards: hover image zoom (CSS transform scale), wishlist heart animation, and Add-to-Cart button state feedback (loading → success).
+3. THE Platform SHALL display a product image gallery on the product detail page supporting thumbnail navigation, with at least one additional image slot beyond the primary `image` field.
+4. THE Platform SHALL display on the product detail page: name, price, discount badge, rating with review count, weight selector, stock indicator, description, Add-to-Cart button, Add-to-Wishlist button, and Share button.
+5. THE Platform SHALL render an order tracking timeline on the order detail page showing all statuses (pending, confirmed, shipped, delivered, cancelled) with the current status highlighted.
+
+---
+
+### Requirement 19: Mobile Navigation
+
+**User Story:** As a customer using a mobile device, I want a navigation menu that is easy to open, navigate, and close, so that I can access all sections of the site comfortably on a small screen.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL implement a slide-in drawer navigation on mobile viewports (< 768 px) containing: logo, main navigation links, category links, wishlist, cart, and account links.
+2. WHEN the mobile navigation drawer is open, THE Platform SHALL trap keyboard focus within the drawer and prevent scrolling of the background content.
+3. WHEN the customer taps outside the drawer or presses the Escape key, THE Platform SHALL close the drawer.
+4. THE mobile navigation drawer SHALL include a close button with `aria-label="Close navigation menu"`.
+5. THE Platform SHALL display a bottom navigation bar on mobile viewports with icons for: Home, Products, Cart (with item count badge), and Account.
+
+---
+
+### Requirement 20: Accessibility (ARIA and Keyboard Navigation)
+
+**User Story:** As a user who relies on keyboard navigation or a screen reader, I want all interactive elements to be operable and properly labelled, so that I can use the platform independently.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL ensure all interactive elements (buttons, links, form inputs) have a discernible accessible name via `aria-label`, `aria-labelledby`, or visible text.
+2. THE Platform SHALL ensure all images that convey information have non-empty `alt` attributes; decorative images SHALL have `alt=""`.
+3. THE Platform SHALL maintain a visible focus indicator on all focusable elements; the indicator SHALL have a minimum contrast ratio of 3:1 against adjacent colours.
+4. THE Platform SHALL ensure all form error messages are associated with their input via `aria-describedby`.
+5. THE Platform SHALL ensure modal dialogs set `aria-modal="true"`, trap focus within the modal, and return focus to the trigger element on close.
+6. THE Platform SHALL target a WCAG 2.1 Level AA conformance baseline across all pages (note: full conformance requires manual testing with assistive technologies).
+
+---
+
+### Requirement 21: Empty States
+
+**User Story:** As a customer, I want clear feedback when a list or section has no content, so that I understand the situation and know what action to take.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL display a meaningful empty state for each of the following scenarios: empty cart, empty wishlist, no search results, no orders, and no reviews.
+2. EACH empty state SHALL include: an illustrative icon or image, a descriptive message, and a relevant call-to-action button (e.g., "Browse Products", "Start Shopping").
+3. THE Platform SHALL use consistent visual styling for all empty states.
+
+---
+
+### Requirement 22: Image Lazy Loading
+
+**User Story:** As a customer on a slow connection, I want product images to load only as I scroll to them, so that the page becomes interactive faster.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL apply `loading="lazy"` to all product images that are not in the initial viewport.
+2. THE Platform SHALL use `loading="eager"` for hero banner images and the first product image on the homepage that is within the initial viewport (above the fold).
+3. WHILE a lazy-loaded image is loading, THE Platform SHALL display a low-resolution placeholder or skeleton with the correct aspect ratio to prevent layout shift.
+4. THE Platform SHALL set explicit `width` and `height` attributes (or equivalent CSS aspect-ratio) on all product image elements to eliminate Cumulative Layout Shift (CLS).
+
+---
+
+### Requirement 23: Missing Database Indexes
+
+**User Story:** As the backend operator, I want critical query fields to be indexed in MongoDB, so that common queries execute efficiently as data volume grows.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL add a compound index on the Order collection: `{ userId: 1, createdAt: -1 }` to support the "my orders" query sorted by date.
+2. THE Platform SHALL add an index on the Order collection: `{ orderstatus: 1 }` to support admin order filtering by status.
+3. THE Platform SHALL add an index on the Address collection: `{ userId: 1 }` to support address lookup by user.
+4. THE Platform SHALL add an index on the Payment collection: `{ orderId: 1 }` to support payment lookup by order.
+5. THE Platform SHALL add a compound index on the Payment collection: `{ userId: 1, status: 1 }` to support user payment history queries.
+6. WHEN the indexes are created, THE Platform SHALL not drop or replace any existing indexes on those collections.
+
+---
+
+### Requirement 24: Batch Cart Sync Before Checkout
+
+**User Story:** As a customer proceeding to checkout, I want the cart to be synced with the server before payment begins, so that I am not charged for out-of-stock or price-changed items.
+
+#### Acceptance Criteria
+
+1. WHEN a customer initiates checkout, THE Cart_Sync SHALL send the complete client-side cart to the backend and receive a validated cart response before rendering the checkout form.
+2. WHEN THE Cart_Sync detects a price change for any cart item (backend price differs from stored price), THE Platform SHALL update the displayed price and notify the customer of the change before they confirm the order.
+3. WHEN THE Cart_Sync detects that a cart item is out of stock, THE Platform SHALL remove the item from the cart, notify the customer, and prevent checkout until the cart is reviewed.
+4. IF Cart_Sync fails due to a network error, THEN THE Platform SHALL display an error message and retain the cart contents locally; THE Platform SHALL not proceed to payment initiation.
+5. THE Cart_Sync SHALL complete within 3 seconds under normal network conditions; IF it exceeds 3 seconds, THE Platform SHALL display a loading indicator.
+
+---
+
+### Requirement 25: Bundle Analysis
+
+**User Story:** As a developer, I want to measure and reduce the JavaScript bundle size, so that the application loads faster for end users.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL integrate `rollup-plugin-visualizer` (or equivalent) into the Vite build configuration to generate a bundle analysis report on production builds.
+2. THE Platform SHALL configure code splitting via dynamic `import()` for route-level components so that no single initial bundle chunk exceeds 250 KB (gzipped).
+3. THE Platform SHALL use tree-shaking-compatible imports for all libraries; specifically, shadcn/ui and Framer Motion components SHALL be imported individually rather than as namespace imports.
+4. WHEN the build script is run, THE Platform SHALL output the bundle analysis report to `dist/bundle-analysis.html`.
+
+---
+
+### Requirement 26: SEO — Per-Page Meta Tags
+
+**User Story:** As the store owner, I want each page to have accurate meta tags, so that search engines index the right content and social shares display correctly.
+
+#### Acceptance Criteria
+
+1. THE SEO_Layer SHALL use `react-helmet-async` to set a unique `<title>` and `<meta name="description">` for each of the following pages: homepage, product listing, product detail, category, about, recipes, contact, cart, and account.
+2. THE SEO_Layer SHALL include Open Graph tags (`og:title`, `og:description`, `og:image`, `og:url`, `og:type`) on all public-facing pages.
+3. WHEN the product detail page renders, THE SEO_Layer SHALL set `og:image` to the product's primary `image` URL.
+4. THE SEO_Layer SHALL set a canonical `<link rel="canonical">` tag on every page to prevent duplicate-content indexing.
+5. THE SEO_Layer SHALL set `<meta name="robots" content="noindex, nofollow">` on authentication pages (login, register, reset-password) and account management pages.
+
+---
+
+### Requirement 27: JSON-LD Structured Data
+
+**User Story:** As the store owner, I want structured data embedded in product and company pages, so that search engines can generate rich snippets.
+
+#### Acceptance Criteria
+
+1. THE SEO_Layer SHALL inject a `Product` JSON-LD schema on every product detail page containing: `name`, `image`, `description`, `sku` (using `_id`), `offers.price`, `offers.priceCurrency: "INR"`, `offers.availability` (mapped from `stock > 0`), and `aggregateRating` (from `rating` and `reviews` fields).
+2. THE SEO_Layer SHALL inject an `Organization` JSON-LD schema on the homepage and About page containing: `name`, `url`, `logo`, `contactPoint` (phone/email), and `sameAs` (social media links).
+3. THE SEO_Layer SHALL inject a `BreadcrumbList` JSON-LD schema on product detail and category pages reflecting the navigation path (Home → Category → Product).
+4. THE SEO_Layer SHALL inject a `LocalBusiness` JSON-LD schema on the About and Contact pages containing: business name, address, phone, and opening hours.
+5. THE JSON-LD schema objects SHALL be rendered inside `<script type="application/ld+json">` tags managed by `react-helmet-async`.
+
+---
+
+### Requirement 28: Sitemap and robots.txt
+
+**User Story:** As the store owner, I want a sitemap.xml and robots.txt file, so that search engine crawlers can discover and index pages efficiently.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL include a Node.js script at `matasree-backend/src/scripts/generateSitemap.ts` that queries all published products and categories from MongoDB and outputs a valid `sitemap.xml` to the frontend's `public/` directory.
+2. THE sitemap.xml SHALL include entries for: homepage, product listing page, all product detail pages (using `/products/:id` URLs), all category pages, About page, Recipes page, and Contact page; each entry SHALL include `<loc>`, `<lastmod>`, `<changefreq>`, and `<priority>`.
+3. THE Platform SHALL include a `robots.txt` file in the frontend `public/` directory that: allows all crawlers to access public pages, disallows `/admin`, `/account`, `/checkout`, `/cart`, and references the sitemap URL.
+4. THE sitemap generation script SHALL be runnable via `npm run generate:sitemap` in the backend package.
+5. IF the sitemap generation script encounters a MongoDB connection error, THEN THE script SHALL log the error with a descriptive message and exit with code 1.
+
+---
+
+### Requirement 29: Security — OAuth Token Delivery
+
+**User Story:** As a security-conscious developer, I want the OAuth access token to be delivered without appearing in the browser URL, so that the token is not leaked via browser history, server logs, or referrer headers.
+
+#### Acceptance Criteria
+
+1. THE OAuth_Callback SHALL not append the access token as a URL query parameter in the redirect URL.
+2. THE OAuth_Callback SHALL deliver the access token and user payload to the frontend using the `postMessage` API: after redirect, the callback page SHALL call `window.opener.postMessage({ token, user }, targetOrigin)` and then close the popup, OR SHALL store the token in `sessionStorage` and redirect to the app.
+3. THE Platform SHALL validate the `origin` in any `postMessage` listener against the configured `FRONTEND_URL` value before consuming the message payload.
+4. WHEN the OAuth flow completes, THE Platform SHALL store the access token in memory (Zustand store) and NOT in `localStorage`.
+5. THE Platform SHALL open the OAuth provider URL in a popup window so that the main application window retains its state.
+
+---
+
+### Requirement 30: Security — JWT Secret Default Fallback Warning
+
+**User Story:** As an operator deploying the backend, I want to be warned if the JWT secret is using a weak or default value, so that I do not accidentally run a production instance with a guessable secret.
+
+#### Acceptance Criteria
+
+1. WHEN the backend server starts, THE Platform SHALL compare the value of `JWT_SECRET` against a list of known weak defaults (e.g., `"secret"`, `"your-secret-key"`, `"changeme"`, `"jwt_secret"`).
+2. IF the `JWT_SECRET` value matches a known weak default and `NODE_ENV` is `production`, THEN THE Platform SHALL log a critical error message and exit with code 1.
+3. IF the `JWT_SECRET` value matches a known weak default and `NODE_ENV` is not `production`, THEN THE Platform SHALL log a visible warning message at startup: "WARNING: JWT_SECRET is using a weak default value. Change it before deploying to production."
+4. THE same check SHALL apply to `JWT_REFRESH_SECRET`.
+5. THE Platform SHALL perform these checks inside the existing `validateEnv()` function in `src/config/env.ts`.
+
+---
+
+### Requirement 31: Security — Cancel Order Backend Route
+
+**User Story:** As a customer, I want to cancel a pending order from my orders page, so that I am not charged for an order I no longer want.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL implement a `PUT /api/orders/:id/cancel` backend route protected by `verifyToken`.
+2. WHEN a customer calls this route, THE Cancel_Order_Route SHALL verify that the order belongs to the authenticated user; IF the order does not belong to the user, THEN THE Cancel_Order_Route SHALL return HTTP 403.
+3. THE Cancel_Order_Route SHALL allow cancellation only WHEN the order's `orderstatus` is `pending` or `confirmed`; IF the order is in any other status, THEN THE Cancel_Order_Route SHALL return HTTP 400 with the message "This order cannot be cancelled."
+4. WHEN a cancellation is successful, THE Cancel_Order_Route SHALL set `orderstatus` to `cancelled`, reverse any stock decrements for all order items, reverse any loyalty points awarded for the order, and return HTTP 200 with the updated order.
+5. WHEN a cancellation is successful and the payment method was `razorpay` with `paymentStatus: paid`, THE Cancel_Order_Route SHALL initiate a Razorpay refund via the Razorpay API and update the Payment document's status to `refund_initiated`.
+6. THE frontend SHALL display a "Cancel Order" button on the order detail page WHEN `orderstatus` is `pending` or `confirmed`, and SHALL remove it for other statuses.
+
+---
+
+### Requirement 32: Security — Persist Coupon Discount on Order
+
+**User Story:** As a developer and auditor, I want the coupon code and discount amount to be stored on each order document, so that financial reporting is accurate and discounts cannot be repudiated.
+
+#### Acceptance Criteria
+
+1. THE Order model SHALL be extended with two optional fields: `couponCode: String` and `discountAmount: Number` (default 0).
+2. WHEN a coupon is applied during order creation, THE Platform SHALL set `couponCode` and `discountAmount` on the Order document at creation time.
+3. WHEN `discountAmount` is greater than 0, THE Platform SHALL subtract `discountAmount` from the gross total when computing `totalAmount` stored on the Order document.
+4. THE Platform SHALL display the applied coupon code and savings amount on the order detail page and order confirmation email.
+5. THE Admin order list in the admin dashboard SHALL display the coupon code and discount amount alongside each order's total.
+
+---
+
+### Requirement 33: Security — Input Validation Audit
+
+**User Story:** As a security engineer, I want all backend API endpoints to validate and sanitize input using a single consistent library, so that injection and data-integrity vulnerabilities are eliminated.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL designate Joi as the single Validation_Library for all backend route handlers and remove any routes that use `express-validator` or `zod` for request validation.
+2. THE Platform SHALL apply Joi validation schemas to all request bodies on: authentication endpoints, product endpoints, order endpoints, coupon endpoints, review endpoints, and address endpoints.
+3. IF any request body fails Joi validation, THEN THE Platform SHALL return HTTP 400 with a descriptive error message identifying the failing field.
+4. THE Platform SHALL sanitize all string inputs to prevent MongoDB operator injection by stripping `$` and `.` prefixes from field names; the existing `sanitizer.ts` middleware SHALL be applied globally.
+5. THE Platform SHALL document the selected Validation_Library in the backend `README.md` under a "Validation Strategy" section.
+
+---
+
+### Requirement 34: Codebase Cleanup — Remove Redundant isAdmin Field
+
+**User Story:** As a developer, I want a single source of truth for admin status, so that authorization checks are consistent and cannot be bypassed via field divergence.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL remove all runtime reads of the `isAdmin` field from User documents in controller authorization checks and replace them with checks against `role === 'admin'`.
+2. THE Platform SHALL remove the `isAdmin` field from all API response payloads where `role` is already present.
+3. THE Platform SHALL retain the `isAdmin` field in the User schema (for backward-compatibility with existing data) but mark it as deprecated in a schema comment.
+4. THE `verifyAdmin` middleware SHALL use only `role === 'admin'` for the authorization check.
+
+---
+
+### Requirement 35: Codebase Cleanup — Unused Static Data and Components
+
+**User Story:** As a developer, I want unused files and components removed from the codebase, so that the project is easier to maintain and the bundle is smaller.
+
+#### Acceptance Criteria
+
+1. THE Platform SHALL audit `src/data/products.ts` and `src/data/companyData.ts` in the frontend; WHERE these files are not imported by any active component, THE Platform SHALL delete them.
+2. THE Platform SHALL audit `TeamSection` and `TraditionalElements` components; WHERE these components are not used in any active page or component tree, THE Platform SHALL delete them.
+3. WHEN any file or component is removed, THE Platform SHALL verify (via TypeScript compilation with `noUnusedLocals: true` or equivalent) that no remaining code references the deleted file.
+4. THE Platform SHALL document removed files and the rationale in the `CHANGELOG.md` or a dedicated cleanup commit message.
+
+---
+
+### Requirement 36: Codebase Cleanup — Document Twilio SMS Stub
+
+**User Story:** As a developer onboarding to the project, I want to know that SMS functionality is not live, so that I don't assume Twilio is fully configured.
+
+#### Acceptance Criteria
+
+1. THE `sendOTPSMS` function in `src/utils/email.ts` (or equivalent SMS utility) SHALL include a JSDoc comment stating: "Twilio SMS integration is a stub. Configure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in .env to enable live SMS delivery."
+2. WHEN the Twilio environment variables are not configured, THE Platform SHALL log a warning at startup: "SMS (Twilio) is not configured. Mobile OTP will not be delivered."
+3. THE backend `README.md` SHALL include a section titled "SMS Configuration" that documents the Twilio stub status and the steps required to enable live SMS.
+4. THE Platform SHALL not throw an unhandled exception when `sendOTPSMS` is called without Twilio credentials; IF credentials are absent, THEN THE function SHALL return `false` and log the warning described in criterion 2.

@@ -9,8 +9,11 @@ const Payment_1 = __importDefault(require("../models/Payment"));
 const Cart_1 = __importDefault(require("../models/Cart"));
 const Address_1 = __importDefault(require("../models/Address"));
 const Product_1 = __importDefault(require("../models/Product"));
+const User_1 = __importDefault(require("../models/User"));
 const response_1 = require("../utils/response");
 const razorpay_1 = require("../utils/razorpay");
+const email_1 = require("../utils/email");
+const logger_1 = __importDefault(require("../config/logger"));
 const joi_1 = __importDefault(require("joi"));
 const createOrderSchema = joi_1.default.object({
     addressId: joi_1.default.string().required(),
@@ -100,13 +103,39 @@ const createOrder = async (req, res) => {
         }
         // Clear cart
         await Cart_1.default.findOneAndUpdate({ userId: req.user?.userId }, { items: [] });
-        res.status(201).json(new response_1.ApiResponse(true, 'Order created', {
+        // Send order confirmation email for COD orders
+        if (paymentMethod === 'cod') {
+            try {
+                const userDoc = await User_1.default.findById(req.user?.userId).select('email');
+                if (userDoc?.email) {
+                    await (0, email_1.sendOrderConfirmationEmail)({
+                        orderNumber,
+                        items: orderItems.map((item) => ({ name: item.name, quantity: item.quantity, price: item.price })),
+                        totalAmount,
+                        shippingAddress: {
+                            fullName: address.name,
+                            addressLine1: address.addressLine1,
+                            ...(address.addressLine2 ? { addressLine2: address.addressLine2 } : {}),
+                            city: address.city,
+                            state: address.state,
+                            pincode: address.pincode,
+                            phone: address.phone,
+                        },
+                        paymentMethod: 'cod',
+                    }, userDoc.email);
+                }
+            }
+            catch (emailError) {
+                logger_1.default.warn('Failed to send order confirmation email for COD order:', emailError);
+            }
+        }
+        return res.status(201).json(new response_1.ApiResponse(true, 'Order created', {
             order,
             razorpayOrder: paymentMethod === 'razorpay' ? razorpayOrder : null,
         }));
     }
     catch (error) {
-        res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to create order', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to create order', null, 500));
     }
 };
 exports.createOrder = createOrder;
@@ -131,10 +160,36 @@ const verifyPayment = async (req, res) => {
             razorpayPaymentId,
             razorpaySignature,
         }, { new: true });
-        res.status(200).json(new response_1.ApiResponse(true, 'Payment verified successfully', order));
+        // Send order confirmation email for online payment
+        try {
+            if (order) {
+                const userDoc = await User_1.default.findById(order.userId).select('email');
+                if (userDoc?.email) {
+                    await (0, email_1.sendOrderConfirmationEmail)({
+                        orderNumber: order.orderNumber,
+                        items: order.items.map((item) => ({ name: item.name, quantity: item.quantity, price: item.price })),
+                        totalAmount: order.totalAmount,
+                        shippingAddress: {
+                            fullName: order.shippingAddress?.name || '',
+                            addressLine1: order.shippingAddress?.addressLine1 || '',
+                            ...(order.shippingAddress?.addressLine2 ? { addressLine2: order.shippingAddress.addressLine2 } : {}),
+                            city: order.shippingAddress?.city || '',
+                            state: order.shippingAddress?.state || '',
+                            pincode: order.shippingAddress?.pincode || '',
+                            phone: order.shippingAddress?.phone || '',
+                        },
+                        paymentMethod: 'razorpay',
+                    }, userDoc.email);
+                }
+            }
+        }
+        catch (emailError) {
+            logger_1.default.warn('Failed to send order confirmation email for Razorpay order:', emailError);
+        }
+        return res.status(200).json(new response_1.ApiResponse(true, 'Payment verified successfully', order));
     }
     catch (error) {
-        res.status(500).json(new response_1.ApiResponse(false, error.message || 'Payment verification failed', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Payment verification failed', null, 500));
     }
 };
 exports.verifyPayment = verifyPayment;
@@ -217,10 +272,10 @@ const updateOrderStatus = async (req, res) => {
         if (!order) {
             return res.status(404).json(new response_1.ApiResponse(false, 'Order not found', null, 404));
         }
-        res.status(200).json(new response_1.ApiResponse(true, 'Order status updated', order));
+        return res.status(200).json(new response_1.ApiResponse(true, 'Order status updated', order));
     }
     catch (error) {
-        res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to update order', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to update order', null, 500));
     }
 };
 exports.updateOrderStatus = updateOrderStatus;

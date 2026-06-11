@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { ChevronLeft, Search, X, ShoppingCart, Truck } from 'lucide-react';
 import { toast } from 'sonner';
+import PageHelmet from '@/components/PageHelmet';
 
 interface Order {
   _id: string;
@@ -146,6 +147,12 @@ const AdminOrders = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <PageHelmet
+        title="Admin: Orders | Matasree Super Masale"
+        description="Manage and update customer orders on Matasree Super Masale admin panel."
+        canonicalUrl="https://matasreesuper.com/admin/orders"
+        noIndex={true}
+      />
       <Navbar />
 
       <div className="container mx-auto px-4 py-8">

@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
+import PageHelmet from '@/components/PageHelmet';
 
 interface AddressFormData {
   name: string;
@@ -61,7 +62,7 @@ const AddressesPage = () => {
 
   const addresses = useMemo(() => {
     if (!addressesData) return [];
-    const data = addressesData.data?.data || addressesData.data?.addresses || addressesData.data || [];
+    const data = addressesData.data || [];
     return Array.isArray(data) ? data : [];
   }, [addressesData]);
 
@@ -160,13 +161,19 @@ const AddressesPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHelmet
+        title="My Addresses | Matasree Super Masale"
+        description="Manage your saved delivery addresses on Matasree Super Masale."
+        canonicalUrl="https://matasreesuper.com/addresses"
+        noIndex={true}
+      />
       <Navbar />
-      <main className="page-enter container mx-auto px-4 pt-24 pb-16">
+      <main id="main-content" className="page-enter container mx-auto px-4 pt-24 pb-16">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate(-1)} className="rounded-full">
-              <ArrowLeft className="w-5 h-5" />
+            <Button variant="ghost" onClick={() => navigate(-1)} className="rounded-full" aria-label="Go back">
+              <ArrowLeft className="w-5 h-5" aria-hidden="true" />
             </Button>
             <div>
               <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground">My Addresses</h1>
@@ -189,8 +196,8 @@ const AddressesPage = () => {
                   <MapPin className="w-5 h-5 text-primary" />
                   {editingId ? 'Edit Address' : 'Add New Address'}
                 </h2>
-                <Button variant="ghost" size="icon" onClick={() => { setShowForm(false); setEditingId(null); }}>
-                  <X className="w-5 h-5" />
+                <Button variant="ghost" size="icon" onClick={() => { setShowForm(false); setEditingId(null); }} aria-label="Close address form">
+                  <X className="w-5 h-5" aria-hidden="true" />
                 </Button>
               </div>
 
@@ -385,8 +392,8 @@ const AddressesPage = () => {
                         <Check className="w-4 h-4 mr-1" /> Set Default
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm" onClick={() => openEditForm(address)}>
-                      <Edit2 className="w-4 h-4" />
+                    <Button variant="ghost" size="sm" onClick={() => openEditForm(address)} aria-label={`Edit address for ${address.name}`}>
+                      <Edit2 className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -394,8 +401,9 @@ const AddressesPage = () => {
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={() => handleDelete(address._id)}
                       disabled={deletingId === address._id}
+                      aria-label={`Delete address for ${address.name}`}
                     >
-                      {deletingId === address._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      {deletingId === address._id ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}
                     </Button>
                   </div>
                 </CardContent>

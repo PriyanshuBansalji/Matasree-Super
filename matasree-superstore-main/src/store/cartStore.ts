@@ -8,6 +8,7 @@ interface CartState {
   addItem: (product: Product) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
+  updateItemPrice: (productId: string, newPrice: number) => void;
   clearCart: () => void;
   toggleCart: () => void;
   setCartOpen: (open: boolean) => void;
@@ -51,6 +52,14 @@ export const useCartStore = create<CartState>()(
         set((state) => ({
           items: state.items.map((item) =>
             item.id === productId ? { ...item, quantity } : item
+          ),
+        }));
+      },
+
+      updateItemPrice: (productId: string, newPrice: number) => {
+        set((state) => ({
+          items: state.items.map((item) =>
+            item.id === productId ? { ...item, price: newPrice } : item
           ),
         }));
       },

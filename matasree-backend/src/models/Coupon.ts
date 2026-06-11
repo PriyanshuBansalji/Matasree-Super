@@ -14,6 +14,9 @@ export interface ICoupon {
     usedOrderId?: mongoose.Types.ObjectId;
     expiresAt: Date;
     source: 'newsletter' | 'admin' | 'promotion';
+    maxUses: number;
+    usageCount: number;              // Req 12.2 — tracks cumulative redemptions
+    categoryRestrictions?: string[]; // Req 12.3 — category ObjectId strings
     createdAt: Date;
     updatedAt: Date;
 }
@@ -73,6 +76,19 @@ const couponSchema = new Schema<ICoupon>(
             type: String,
             enum: ['newsletter', 'admin', 'promotion'],
             default: 'newsletter',
+        },
+        maxUses: {
+            type: Number,
+            default: 0, // 0 = unlimited
+            min: 0,
+        },
+        usageCount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        categoryRestrictions: {
+            type: [String],
         },
     },
     { timestamps: true }

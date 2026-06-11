@@ -71,9 +71,10 @@ const Footer = () => {
                       target="_blank"
                       rel="noopener noreferrer"
                       title={social.label}
+                      aria-label={`Matasree Super on ${social.label} (opens in new tab)`}
                       className="w-12 h-12 rounded-full bg-background/15 hover:bg-gradient-spice text-background hover:text-white hover:scale-110 flex items-center justify-center transition-all duration-300 border border-background/20 hover:border-transparent shadow-md font-bold"
                     >
-                      <Icon className="w-5 h-5" />
+                      <Icon className="w-5 h-5" aria-hidden="true" />
                     </a>
                   );
                 })}

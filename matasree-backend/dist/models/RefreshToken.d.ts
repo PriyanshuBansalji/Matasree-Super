@@ -11,6 +11,8 @@ export interface IRefreshToken extends Document {
     isRevoked: boolean;
     userAgent?: string;
     ipAddress?: string;
+    /** Set to true when issued via OAuth flow; cleared after first /api/auth/token exchange */
+    oauthPending?: boolean;
     createdAt: Date;
 }
 declare const _default: mongoose.Model<IRefreshToken, {}, {}, {}, mongoose.Document<unknown, {}, IRefreshToken, {}, {}> & IRefreshToken & Required<{

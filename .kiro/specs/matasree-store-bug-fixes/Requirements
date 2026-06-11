@@ -1,0 +1,299 @@
+# Requirements Document
+
+## Introduction
+
+This document covers the bug-fix requirements for the Matasree Store e-commerce application, a full-stack project comprising a React/TypeScript frontend (Vite, port 8000) and an Express/TypeScript backend (port 5001). During audit, 21 distinct defects were identified across CORS configuration, cart API contract mismatches, missing transactional emails, TypeScript type errors causing runtime crashes, missing HTTP response termination causing "headers already sent" errors, missing admin routes, and admin analytics shape mismatches. All fixes must preserve existing behaviour for non-affected code paths and must not introduce new dependencies unless unavoidable.
+
+## Glossary
+
+- **Backend**: The Express/TypeScript server located in `matasree-backend/src/`.
+- **Frontend**: The React/Vite application located in `matasree-superstore-main/src/`.
+- **ApiClient**: The Axios-based class in `src/services/api.ts` that issues all HTTP requests from the Frontend.
+- **CORS_Config**: The `allowedOrigins` array and `cors()` middleware block in `matasree-backend/src/server.ts`.
+- **CartController**: `matasree-backend/src/controllers/cartController.ts`.
+- **CartRoutes**: `matasree-backend/src/routes/cartRoutes.ts`.
+- **OrderController**: `matasree-backend/src/controllers/orderController.ts`.
+- **AdminController**: `matasree-backend/src/controllers/adminController.ts`.
+- **AdminRoutes**: `matasree-backend/src/routes/adminRoutes.ts`.
+- **AuthController**: `matasree-backend/src/controllers/authController.ts`.
+- **CouponRoutes**: `matasree-backend/src/routes/couponRoutes.ts`.
+- **EmailRoutes**: `matasree-backend/src/routes/emailRoutes.ts`.
+- **CloudinaryConfig**: `matasree-backend/src/config/cloudinary.ts`.
+- **AuthService**: `matasree-backend/src/services/authService.ts`.
+- **PasswordResetOtpStore**: The in-memory `passwordResetOtpStore` map in AuthController.
+- **useApi**: `matasree-superstore-main/src/hooks/useApi.ts`.
+- **AdminUsers**: `matasree-superstore-main/src/pages/AdminUsers.tsx`.
+- **CheckoutPage**: `matasree-superstore-main/src/pages/CheckoutPage.tsx`.
+- **AddressesPage**: `matasree-superstore-main/src/pages/AddressesPage.tsx`.
+- **COD**: Cash on Delivery payment method.
+- **OTP**: One-time password used for email/mobile verification and password reset.
+- **PaymentSummary**: The structured object `{ totalPayments, razorpayPayments, codPayments, paymentMethods }` expected by the Frontend admin analytics page.
+
+---
+
+## Requirements
+
+### Requirement 1 — CORS: Add Frontend Port 8000 and Align FRONTEND_URL
+
+**User Story:** As a developer running the frontend on port 8000, I want the Backend to accept cross-origin requests from `http://localhost:8000` and `http://127.0.0.1:8000`, so that API calls from the browser are not blocked by CORS.
+
+#### Acceptance Criteria
+
+1. THE CORS_Config SHALL include `http://localhost:8000` and `http://127.0.0.1:8000` in the `allowedOrigins` array in `server.ts`.
+2. WHEN the Backend reads `process.env.FRONTEND_URL`, THE CORS_Config SHALL use that value as an additional allowed origin so that the production URL configured in `.env` is also permitted.
+3. THE Backend `.env` file SHALL set `FRONTEND_URL=http://localhost:8000` to match the Vite dev server port declared in `vite.config.ts`.
+4. WHEN an HTTP request arrives from `http://localhost:8000` with `credentials: true`, THE Backend SHALL respond with `Access-Control-Allow-Origin: http://localhost:8000` and `Access-Control-Allow-Credentials: true`.
+5. IF a request arrives from an origin not present in `allowedOrigins`, THEN THE CORS_Config SHALL reject the request with HTTP 403 and log a warning.
+
+---
+
+### Requirement 2 — Cart API Contract: Align Frontend removeFromCart with Backend
+
+**User Story:** As a logged-in customer, I want removing an item from my cart to succeed, so that my cart accurately reflects my intent before checkout.
+
+#### Acceptance Criteria
+
+1. THE ApiClient `removeFromCart` method SHALL send `POST /cart/remove` with body `{ productId: string }` instead of `DELETE /cart/remove/:itemId`.
+2. THE CartRoutes SHALL retain the existing `POST /cart/remove` route handler mapped to `CartController.removeFromCart`.
+3. WHEN `POST /cart/remove` is called with a valid `productId`, THE CartController SHALL filter the matching item from the cart and respond with HTTP 200 and the updated cart document.
+4. IF the cart is not found, THEN THE CartController SHALL respond with HTTP 404 and the message `"Cart not found"`.
+
+---
+
+### Requirement 3 — Cart API Contract: Align Frontend updateCartItem with Backend
+
+**User Story:** As a logged-in customer, I want updating an item quantity in my cart to succeed, so that the correct quantity is sent to the backend on checkout.
+
+#### Acceptance Criteria
+
+1. THE ApiClient `updateCartItem` method SHALL send `PUT /cart/update` with body `{ productId: string; quantity: number }` instead of `{ itemId: string; quantity: number }`.
+2. THE CartRoutes SHALL retain the existing `PUT /cart/update` route handler mapped to `CartController.updateCartItem`.
+3. WHEN `PUT /cart/update` is called with a valid `productId` and `quantity`, THE CartController SHALL update the matching item quantity and respond with HTTP 200 and the updated cart document.
+4. IF the cart or item is not found, THEN THE CartController SHALL respond with the appropriate HTTP 404 error.
+
+---
+
+### Requirement 4 — Order Confirmation Email: COD Orders
+
+**User Story:** As a customer who places a Cash on Delivery order, I want to receive an order confirmation email, so that I have a record of my purchase.
+
+#### Acceptance Criteria
+
+1. WHEN a COD order is successfully created in `OrderController.createOrder`, THE OrderController SHALL call `sendEmail` with the customer's email address, the order number, the item list, the total amount, and the delivery address.
+2. THE order confirmation email subject SHALL be `"Order Confirmed — Matasree"` and SHALL include the order number.
+3. IF `sendEmail` returns `false`, THEN THE OrderController SHALL log an error but SHALL still respond to the client with HTTP 201 and the created order data, so that email failure does not block order creation.
+4. THE order confirmation email SHALL be sent before or immediately after the HTTP 201 response is dispatched.
+
+---
+
+### Requirement 5 — Order Confirmation Email: Razorpay Orders
+
+**User Story:** As a customer who pays via Razorpay, I want to receive an order confirmation email after payment verification succeeds, so that I have proof of the completed transaction.
+
+#### Acceptance Criteria
+
+1. WHEN `OrderController.verifyPayment` successfully validates the Razorpay signature and updates the order status to `"confirmed"`, THE OrderController SHALL call `sendEmail` with the customer's email address, the order number, the total amount, and payment method details.
+2. THE confirmation email subject for Razorpay orders SHALL be `"Payment Successful — Order Confirmed — Matasree"`.
+3. IF `sendEmail` returns `false` during payment verification, THEN THE OrderController SHALL log an error but SHALL still respond to the client with HTTP 200 and the updated order, so that email failure does not prevent payment acknowledgment.
+4. THE OrderController SHALL retrieve the customer's email by populating or fetching the user record associated with the order before calling `sendEmail`.
+
+---
+
+### Requirement 6 — Coupon TypeScript Errors: ObjectId Assignment Safety
+
+**User Story:** As a developer building the backend, I want coupon ObjectId assignments to be type-safe, so that the TypeScript compiler does not produce errors that can cause runtime crashes.
+
+#### Acceptance Criteria
+
+1. WHEN `coupon.usedOrderId` is assigned in `CouponRoutes`, THE assignment SHALL only occur after confirming `orderId` is a non-empty string, and SHALL wrap the value in `new mongoose.Types.ObjectId(orderId)`.
+2. WHEN `coupon.userId` is assigned in `CouponRoutes`, THE assignment SHALL only occur after confirming `authReq.user?.userId` is defined, and SHALL wrap the value in `new mongoose.Types.ObjectId(authReq.user.userId)`.
+3. THE TypeScript compiler SHALL produce zero type errors for the coupon apply route after these fixes are applied.
+
+---
+
+### Requirement 7 — Coupon Routes: Missing Return Statements
+
+**User Story:** As a developer, I want all early-exit response paths in the coupon route handlers to have explicit `return` statements, so that Express does not attempt to send a second response and crash with "headers already sent".
+
+#### Acceptance Criteria
+
+1. THE `POST /coupons/validate` handler in CouponRoutes SHALL have a `return` statement before every `res.status(...).json(...)` call that is not the final response in the function body.
+2. THE `POST /coupons/apply` handler in CouponRoutes SHALL have a `return` statement before every `res.status(...).json(...)` call that is not the final response in the function body.
+3. IF the Backend is running and two rapid requests hit the same coupon validation endpoint, THEN THE Backend SHALL NOT log a "Cannot set headers after they are sent to the client" error.
+
+---
+
+### Requirement 8 — Express Handlers: Missing Return Statements in Controllers
+
+**User Story:** As a developer, I want all Express route handlers to terminate execution after sending a response, so that the "Cannot set headers after they are sent to the client" crash does not occur under any code path.
+
+#### Acceptance Criteria
+
+1. THE Backend `addressController`, `cartController`, `categoryController`, `orderController`, `partnershipController`, and `productController` SHALL each have a `return` statement before every early `res.status(...).json(...)` call that would otherwise allow further code execution after the response is sent.
+2. WHEN any validated error condition is encountered inside a route handler (e.g., missing required field, resource not found), THE handler SHALL send an error response and immediately terminate handler execution without reaching the success response branch.
+3. THE TypeScript compiler SHALL produce zero "unreachable code" or "headers already sent" class errors in any controller file after this fix.
+
+---
+
+### Requirement 9 — Auth Controller: issueTokens Type Safety
+
+**User Story:** As a developer, I want the `issueTokens` call sites in AuthController to pass correctly typed arguments, so that TypeScript does not emit type errors on the `userAgent` and `ipAddress` fields.
+
+#### Acceptance Criteria
+
+1. THE AuthController SHALL pass `userAgent: req.headers['user-agent'] as string | undefined` and `ipAddress: req.ip as string | undefined` when calling `issueTokens` and `rotateRefreshToken` in all local auth handlers (`register`, `login`, `refreshToken`).
+2. THE `issueTokens` function signature in AuthService SHALL declare the `meta` parameter as `meta?: { userAgent?: string; ipAddress?: string }` so that `undefined` values are accepted without type errors.
+3. THE TypeScript compiler SHALL produce zero type errors related to `issueTokens` or `rotateRefreshToken` call sites after these fixes are applied.
+
+---
+
+### Requirement 10 — Cloudinary Config: String | Undefined Type Fix
+
+**User Story:** As a developer deploying image uploads, I want the Cloudinary configuration to compile without TypeScript errors, so that product image upload functionality is available when Cloudinary credentials are set.
+
+#### Acceptance Criteria
+
+1. THE CloudinaryConfig SHALL cast the Cloudinary credential environment variables to `string` only when they are defined, or SHALL use a type assertion pattern (e.g., `as any`) that satisfies the Cloudinary SDK type signature without relying on `string | undefined`.
+2. THE CloudinaryConfig SHALL NOT pass `undefined` directly to `cloud_name`, `api_key`, or `api_secret` fields of `cloudinary.config()` when TypeScript strict mode is active.
+3. THE TypeScript compiler SHALL produce zero type errors in `cloudinary.ts` after this fix.
+
+---
+
+### Requirement 11 — Password Reset: OTP Persists Through Two-Step Flow
+
+**User Story:** As a customer who forgets their password, I want the password reset to succeed when I complete both the verify-OTP step and the reset-password step in sequence, so that the two-step flow works end-to-end.
+
+#### Acceptance Criteria
+
+1. THE AuthController `verifyPasswordResetOtp` handler SHALL NOT delete the OTP entry from `passwordResetOtpStore` upon successful verification; it SHALL leave the entry intact so the subsequent `resetPassword` call can validate it.
+2. THE AuthController `resetPassword` handler SHALL validate the OTP against `passwordResetOtpStore` and SHALL delete the entry only after the password update is successfully persisted.
+3. WHEN a user calls `POST /auth/verify-reset-otp` with a correct OTP and then calls `POST /auth/reset-password` with the same OTP within the 5-minute expiry window, THE AuthController SHALL successfully update the password and respond with HTTP 200.
+4. IF the OTP entry has expired before `POST /auth/reset-password` is called, THEN THE AuthController SHALL respond with HTTP 400 and the message `"OTP has expired"`.
+
+---
+
+### Requirement 12 — Admin Routes: Update User Role Endpoint
+
+**User Story:** As an administrator, I want a working endpoint to change a user's role, so that I can promote or demote users from the Admin Users page.
+
+#### Acceptance Criteria
+
+1. THE AdminRoutes SHALL register `PUT /admin/users/:id/role` mapped to an `AdminController.updateUserRole` handler.
+2. THE AdminController `updateUserRole` handler SHALL accept `{ role: string }` in the request body, validate that the value is one of `["customer", "admin"]`, and update the matching user document.
+3. WHEN `PUT /admin/users/:id/role` is called with a valid userId and role, THE AdminController SHALL respond with HTTP 200 and the updated user object.
+4. IF the target user is not found, THEN THE AdminController SHALL respond with HTTP 404 and the message `"User not found"`.
+5. IF the role value is not `"customer"` or `"admin"`, THEN THE AdminController SHALL respond with HTTP 400 and the message `"Invalid role"`.
+
+---
+
+### Requirement 13 — Admin Routes: Delete User Endpoint
+
+**User Story:** As an administrator, I want a working endpoint to delete a user account, so that I can remove accounts from the Admin Users page.
+
+#### Acceptance Criteria
+
+1. THE AdminRoutes SHALL register `DELETE /admin/users/:id` mapped to an `AdminController.deleteUser` handler.
+2. THE AdminController `deleteUser` handler SHALL find the user by the `:id` path parameter and permanently delete the user document.
+3. WHEN `DELETE /admin/users/:id` is called with a valid userId, THE AdminController SHALL respond with HTTP 200 and the message `"User deleted successfully"`.
+4. IF the target user is not found, THEN THE AdminController SHALL respond with HTTP 404 and the message `"User not found"`.
+
+---
+
+### Requirement 14 — Admin Analytics: Payment Summary Response Shape
+
+**User Story:** As an administrator viewing the payment analytics page, I want the `/admin/analytics/payments` endpoint to return a structured summary object, so that the frontend can display total, Razorpay, and COD payment figures correctly.
+
+#### Acceptance Criteria
+
+1. THE AdminController `getPaymentSummary` handler SHALL transform the raw MongoDB aggregate array into a structured object with the shape `{ totalPayments: number, razorpayPayments: number, codPayments: number, paymentMethods: Array<{ method: string, total: number, count: number }> }` before sending the response.
+2. THE `totalPayments` field SHALL be the sum of `amount` across all Payment documents.
+3. THE `razorpayPayments` field SHALL be the sum of `amount` for Payment documents where `method === "razorpay"`.
+4. THE `codPayments` field SHALL be the sum of `amount` for Payment documents where `method === "cod"`.
+5. THE `paymentMethods` field SHALL contain the full per-method aggregate array.
+6. WHEN no payments exist, THE AdminController SHALL return the structured object with all numeric fields set to `0` and `paymentMethods` set to `[]`.
+
+---
+
+### Requirement 15 — Coupon Model: Add maxUses Field
+
+**User Story:** As a developer building coupon management features described in the API documentation, I want the Coupon model to include a `maxUses` field, so that coupon usage limits can be stored and enforced.
+
+#### Acceptance Criteria
+
+1. THE `ICoupon` interface in `matasree-backend/src/models/Coupon.ts` SHALL include the field `maxUses?: number`.
+2. THE Mongoose `couponSchema` SHALL include `maxUses` as an optional `Number` field with a default of `0` (meaning unlimited).
+3. THE TypeScript compiler SHALL produce zero errors when `maxUses` is read or set on a `Coupon` document after this addition.
+
+---
+
+### Requirement 16 — Frontend: Newsletter Subscription Auth Check
+
+**User Story:** As an unauthenticated visitor, I want the newsletter subscription action to prompt me to log in rather than silently receiving a 401 error, so that the subscription experience is clear and actionable.
+
+#### Acceptance Criteria
+
+1. WHEN a user who is not authenticated triggers the newsletter subscription action in the Frontend, THE Frontend SHALL NOT call `POST /email/subscribe`; instead, THE Frontend SHALL display a toast or redirect prompt instructing the user to log in first.
+2. THE `POST /email/subscribe` endpoint in EmailRoutes SHALL continue to require authentication via the `verifyToken` middleware.
+3. WHEN an authenticated user triggers the newsletter subscription, THE ApiClient SHALL call `POST /email/subscribe` and the Backend SHALL process the request and generate a coupon code.
+
+---
+
+### Requirement 17 — Frontend useAddresses: Fix Double .data Unwrapping in CheckoutPage
+
+**User Story:** As a customer on the checkout page, I want my saved addresses to appear in the address selection list, so that I can choose a delivery address and complete my order.
+
+#### Acceptance Criteria
+
+1. THE CheckoutPage `addresses` memo SHALL resolve the address array by reading `addressesData?.data` exactly once (the Axios interceptor in ApiClient already unwraps the outer response envelope, so the raw data array is available at `addressesData.data`), and SHALL NOT attempt to read `.data.data`.
+2. WHEN `useAddresses` returns a non-empty response, THE CheckoutPage SHALL render a non-empty list of address options in the RadioGroup.
+3. THE AddressesPage `addresses` memo already handles the correct unwrapping pattern and SHALL NOT be modified by this fix.
+
+---
+
+### Requirement 18 — Frontend AdminUsers: updateUserRole and deleteUser Endpoints
+
+**User Story:** As an administrator, I want the Promote/Demote and Delete buttons on the Admin Users page to call working backend endpoints, so that user management actions take effect.
+
+#### Acceptance Criteria
+
+1. THE ApiClient `updateUserRole` method SHALL call `PUT /admin/users/:id/role` with body `{ role: string }`, matching the new endpoint defined in Requirement 12.
+2. THE ApiClient `deleteUser` method SHALL call `DELETE /admin/users/:id`, matching the new endpoint defined in Requirement 13.
+3. WHEN an admin clicks Promote or Demote on AdminUsers.tsx, THE Frontend SHALL call `apiClient.updateUserRole` and, upon a 200 response, shall refresh the user list.
+4. WHEN an admin clicks Delete on AdminUsers.tsx, THE Frontend SHALL call `apiClient.deleteUser` and, upon a 200 response, shall refresh the user list.
+
+---
+
+### Requirement 19 — Frontend Admin Analytics: Payment Summary Shape Alignment
+
+**User Story:** As an administrator, I want the payment analytics data displayed on the Admin Dashboard to correctly show Razorpay and COD payment totals, so that financial reporting is accurate.
+
+#### Acceptance Criteria
+
+1. THE AdminDashboard page (or the page that calls `apiClient.get('/admin/analytics/payments')`) SHALL read the structured fields `totalPayments`, `razorpayPayments`, `codPayments`, and `paymentMethods` from the API response data, after the backend fix in Requirement 14 is applied.
+2. IF the payment analytics response data does not contain the expected shape (e.g., still a raw array), THE Frontend SHALL render a fallback state (empty values or "No data available") rather than crashing.
+
+---
+
+### Requirement 20 — Backend: GET /products/featured Route and Controller
+
+**User Story:** As a customer on the homepage, I want the featured products section to load correctly, so that I can see highlighted products without seeing a 404 error.
+
+#### Acceptance Criteria
+
+1. THE product routes file SHALL register `GET /products/featured` before the `GET /products/:id` parameterized route to prevent route shadowing.
+2. THE `ProductController.getFeaturedProducts` function SHALL exist and SHALL query the Product collection for documents where `isFeatured === true` or `featured === true`, ordered by creation date descending, and limited to 8 results.
+3. WHEN `GET /products/featured` is called, THE ProductController SHALL respond with HTTP 200 and an array of featured product objects (which may be empty if no featured products exist).
+4. IF a database error occurs, THEN THE ProductController SHALL respond with HTTP 500 and an error message.
+
+---
+
+### Requirement 21 — Contact Form: Confirmation Email to Submitter
+
+**User Story:** As a customer who submits the contact form, I want to receive a confirmation reply email, so that I know my message was received.
+
+#### Acceptance Criteria
+
+1. WHEN the `POST /email/contact` endpoint successfully receives a valid contact form submission, THE EmailRoutes SHALL send a confirmation email to the address provided in the `email` field of the request body.
+2. THE confirmation email subject SHALL be `"We received your message - Matasree Super"`.
+3. IF the confirmation email fails to send, THE EmailRoutes SHALL log the error but SHALL still respond with HTTP 200 to the submitter, so that email delivery failure does not block form submission acknowledgment.
+4. THE admin notification email (sent to `ADMIN_EMAIL`) SHALL continue to be sent regardless of whether the customer confirmation email succeeds.

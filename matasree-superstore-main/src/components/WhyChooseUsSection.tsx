@@ -86,7 +86,7 @@ const Logo3D = () => {
           }}
           className="absolute inset-0 flex items-center justify-center opacity-20 blur-md pointer-events-none"
         >
-          <img src={logo} alt="" className="w-48 h-48 md:w-56 md:h-56 object-contain" />
+          <img src={logo} alt="" aria-hidden="true" className="w-48 h-48 md:w-56 md:h-56 object-contain" />
         </motion.div>
 
         {/* Main logo */}

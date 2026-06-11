@@ -8,12 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { Users, ShoppingCart, DollarSign, TrendingUp, Package, AlertCircle, CheckCircle, Clock, ArrowRight } from 'lucide-react';
+import PageHelmet from '@/components/PageHelmet';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [stats, setStats] = useState<any>(null);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [paymentsData, setPaymentsData] = useState<{
+    totalPayments: number;
+    razorpayPayments: number;
+    codPayments: number;
+    paymentMethods: Array<{ _id: string; total: number; count: number }>;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,9 +31,10 @@ const AdminDashboard = () => {
 
     const fetchStats = async () => {
       try {
-        const [statsResponse, analyticsResponse] = await Promise.all([
+        const [statsResponse, analyticsResponse, paymentsResponse] = await Promise.all([
           apiClient.getAdminStats(),
-          apiClient.getRevenueAnalytics()
+          apiClient.getRevenueAnalytics(),
+          apiClient.getPaymentAnalytics(),
         ]);
 
         // Response structure after interceptor: { success, data: {...}, statusCode }
@@ -36,6 +44,10 @@ const AdminDashboard = () => {
 
         if (analyticsResponse?.data) {
           setAnalytics(analyticsResponse.data);
+        }
+
+        if (paymentsResponse?.data) {
+          setPaymentsData(paymentsResponse.data);
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error);
@@ -61,6 +73,12 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <PageHelmet
+        title="Admin Dashboard | Matasree Super Masale"
+        description="Matasree Super Masale admin dashboard."
+        canonicalUrl="https://matasreesuper.com/admin/dashboard"
+        noIndex={true}
+      />
       <Navbar />
 
       <div className="container mx-auto px-4 py-8">
@@ -168,6 +186,86 @@ const AdminDashboard = () => {
                 </ResponsiveContainer>
               ) : (
                 <p className="text-center py-8 text-gray-500">No data available</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Payment Analytics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {paymentsData && (paymentsData.paymentMethods?.length ?? 0) > 0 ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-blue-50 rounded-lg">
+                      <p className="text-2xl font-bold text-blue-700">{paymentsData.totalPayments}</p>
+                      <p className="text-sm text-gray-600">Total Payments</p>
+                    </div>
+                    <div className="text-center p-4 bg-green-50 rounded-lg">
+                      <p className="text-2xl font-bold text-green-700">{paymentsData.razorpayPayments}</p>
+                      <p className="text-sm text-gray-600">Razorpay</p>
+                    </div>
+                    <div className="text-center p-4 bg-orange-50 rounded-lg">
+                      <p className="text-2xl font-bold text-orange-700">{paymentsData.codPayments}</p>
+                      <p className="text-sm text-gray-600">Cash on Delivery</p>
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie
+                        data={paymentsData.paymentMethods.map((m) => ({
+                          name: m._id === 'cod' ? 'Cash on Delivery' : 'Razorpay',
+                          value: m.count,
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {paymentsData.paymentMethods.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={index === 0 ? '#3b82f6' : '#f97316'} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-center py-8 text-gray-500">No payment data available</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Method Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {paymentsData && (paymentsData.paymentMethods?.length ?? 0) > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={paymentsData.paymentMethods.map((m) => ({
+                      method: m._id === 'cod' ? 'Cash on Delivery' : 'Razorpay',
+                      count: m.count,
+                      total: m.total,
+                    }))}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="method" />
+                    <YAxis />
+                    <Tooltip formatter={(value, name) => name === 'total' ? `₹${value}` : value} />
+                    <Legend />
+                    <Bar dataKey="count" fill="#3b82f6" name="Transactions" />
+                    <Bar dataKey="total" fill="#10b981" name="Amount (₹)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-center py-8 text-gray-500">No payment data available</p>
               )}
             </CardContent>
           </Card>

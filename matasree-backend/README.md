@@ -117,6 +117,43 @@ npm start
 
 See `.env.example` for all required variables.
 
+## SMS Configuration
+
+> **Status: Stub — live SMS is not enabled by default.**
+
+The backend ships with a Twilio SMS integration that is implemented as a stub. When the required environment variables are absent the `sendOTPSMS` function logs a warning and returns `false` — it does **not** throw an unhandled exception and it does **not** block the application from starting.
+
+To enable live SMS delivery, add the following variables to your `.env` file:
+
+```
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   # must start with "AC"
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_PHONE_NUMBER=+1234567890                         # E.164 format
+```
+
+When these variables are set and valid, the server will log `✅ Twilio SMS service initialized` on startup and OTPs will be delivered via Twilio.
+
+When any of the three variables are absent or invalid, the server will log:
+```
+⚠️  SMS (Twilio) is not configured. Mobile OTP will not be delivered.
+```
+
+---
+
+## Validation Strategy
+
+All request-body validation uses **Joi**. The `express-mongo-sanitize` and `HPP` middleware are applied globally in `server.ts` to prevent MongoDB operator injection and HTTP Parameter Pollution.
+
+**Zod and `express-validator` are not used for request validation.**
+
+Every Joi schema is configured with `abortEarly: false` and `stripUnknown: true`. Validation failures return HTTP 400 with the body:
+
+```json
+{ "success": false, "message": "<field>: <validation message>" }
+```
+
+---
+
 ## License
 
 MIT

@@ -2,6 +2,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
 import { Shield, Mail, Lock, Eye, CheckCircle2, ArrowRight } from 'lucide-react';
+import PageHelmet from '@/components/PageHelmet';
 
 const PrivacyPolicyPage = () => {
   const sections = [
@@ -29,6 +30,12 @@ const PrivacyPolicyPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHelmet
+        title="Privacy Policy | Matasree Super Masale"
+        description="Read the Privacy Policy for Matasree Super Masale — how we collect, use, and protect your personal information."
+        canonicalUrl="https://matasreesuper.com/privacy-policy"
+        ogType="website"
+      />
       <Navbar />
       <CartDrawer />
       

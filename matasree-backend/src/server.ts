@@ -15,6 +15,9 @@ import { sanitizeMongo, preventHPP, xssSanitizer } from './middleware/sanitizer'
 import passport, { initializePassport } from './config/passport';
 import logger from './config/logger';
 
+// Jobs
+import { initCartAbandonmentJob } from './jobs/cartAbandonmentJob';
+
 // Routes
 import authRoutes from './routes/authRoutes';
 import productRoutes from './routes/productRoutes';
@@ -27,6 +30,9 @@ import emailRoutes from './routes/emailRoutes';
 import partnershipRoutes from './routes/partnershipRoutes';
 import reviewRoutes from './routes/reviewRoutes';
 import couponRoutes from './routes/couponRoutes';
+import wishlistRoutes from './routes/wishlistRoutes';
+import loyaltyRoutes from './routes/loyaltyRoutes';
+import referralRoutes from './routes/referralRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -55,10 +61,12 @@ app.use(helmet({
 const allowedOrigins = [
   'http://localhost:8000',     // Frontend dev (Vite)
   'http://localhost:8001',     // Frontend dev (Vite alt)
+  'http://localhost:8080',     // Frontend dev (Vite port 8080)
   'http://127.0.0.1:8000',    // Frontend dev (alt)
   'http://127.0.0.1:8001',    // Frontend dev (alt)
+  'http://127.0.0.1:8080',    // Frontend dev (alt port 8080)
   'http://localhost:5001',     // Backend self
-  process.env.FRONTEND_URL || 'http://localhost:8000',
+  process.env.FRONTEND_URL || 'http://localhost:8080',
 ];
 
 app.use(cors({
@@ -180,6 +188,9 @@ app.use('/api/email', emailRoutes);
 app.use('/api/partnership', partnershipRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/coupons', couponRoutes);
+app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/loyalty', loyaltyRoutes);
+app.use('/api/referral', referralRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -203,9 +214,10 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     await connectDB();
+    initCartAbandonmentJob();
     app.listen(PORT, () => {
       logger.info(`✅ Server running on http://localhost:${PORT}`);
-      logger.info(`📡 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:8000'}`);
+      logger.info(`📡 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:8080'}`);
       logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (error) {

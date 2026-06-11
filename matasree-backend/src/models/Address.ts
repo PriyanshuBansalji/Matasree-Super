@@ -56,4 +56,7 @@ const addressSchema = new Schema<IAddress>(
   { timestamps: true }
 );
 
+// Index for user address lookups
+addressSchema.index({ userId: 1 }, { background: true });
+
 export default mongoose.model<IAddress>('Address', addressSchema);

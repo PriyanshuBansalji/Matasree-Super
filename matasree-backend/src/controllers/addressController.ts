@@ -52,7 +52,7 @@ export const getAddressById = async (req: any, res: Response) => {
  */
 export const createAddress = async (req: any, res: Response) => {
   try {
-    const { error, value } = addressSchema.validate(req.body);
+    const { error, value } = addressSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }
@@ -73,7 +73,7 @@ export const createAddress = async (req: any, res: Response) => {
  */
 export const updateAddress = async (req: any, res: Response) => {
   try {
-    const { error, value } = addressSchema.validate(req.body, { stripUnknown: true });
+    const { error, value } = addressSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }

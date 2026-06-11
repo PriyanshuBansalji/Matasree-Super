@@ -1,0 +1,979 @@
+# Design Document: Matasree Store Bug Fixes
+
+## Overview
+
+This document provides the concrete implementation design for 21 confirmed bugs and broken features in the Matasree Store. Fixes are grouped by category and presented with exact file paths, before/after code snippets where clarifying, and rationale for each change. No new npm dependencies are introduced; all fixes use existing patterns already present in the codebase.
+
+---
+
+## Architecture Context
+
+```
+matasree-backend/            ← Node.js / Express / TypeScript
+  src/
+    config/cloudinary.ts
+    controllers/
+      adminController.ts
+      authController.ts
+      cartController.ts
+      orderController.ts
+      partnershipController.ts
+      productController.ts
+    middleware/auth.ts
+    models/Coupon.ts
+    routes/
+      adminRoutes.ts
+      cartRoutes.ts
+      couponRoutes.ts
+      emailRoutes.ts
+      productRoutes.ts
+    services/authService.ts
+    server.ts
+    utils/email.ts
+
+matasree-superstore-main/    ← React / TypeScript / Vite
+  src/
+    pages/
+      AddressesPage.tsx
+      AdminUsers.tsx
+    services/api.ts
+  .env.local
+```
+
+---
+
+## Bug Fix Groups
+
+---
+
+### Group A — Backend Infrastructure Fixes (Requirements 1, 7)
+
+#### Fix A1 — CORS: Add Port 8080 Origins (Requirement 1)
+
+**File:** `matasree-backend/src/server.ts`
+
+The `allowedOrigins` array is missing `http://localhost:8080` and `http://127.0.0.1:8080`. The frontend `.env.local` already sets `VITE_API_URL` pointing to port 5001, but the backend must explicitly permit port-8080 origins.
+
+**Change:**
+```typescript
+// BEFORE
+const allowedOrigins = [
+  'http://localhost:8000',
+  'http://localhost:8001',
+  'http://127.0.0.1:8000',
+  'http://127.0.0.1:8001',
+  'http://localhost:5001',
+  process.env.FRONTEND_URL || 'http://localhost:8000',
+];
+
+// AFTER
+const allowedOrigins = [
+  'http://localhost:8000',
+  'http://localhost:8001',
+  'http://localhost:8080',   // ← added
+  'http://127.0.0.1:8000',
+  'http://127.0.0.1:8001',
+  'http://127.0.0.1:8080',   // ← added
+  'http://localhost:5001',
+  process.env.FRONTEND_URL || 'http://localhost:8080',
+];
+```
+
+**File:** `matasree-backend/.env.example`
+
+Update the example value so developers know the recommended port:
+```
+# BEFORE
+FRONTEND_URL=http://localhost:3000
+
+# AFTER
+FRONTEND_URL=http://localhost:8080
+```
+
+**File:** `matasree-superstore-main/.env.local`
+
+Verify (or set) this entry so Vite routes API calls to the correct backend port:
+```
+VITE_API_URL=http://localhost:5001/api
+```
+
+---
+
+#### Fix A2 — Cloudinary Config: String | Undefined Type Errors (Requirement 7)
+
+**File:** `matasree-backend/src/config/cloudinary.ts`
+
+`process.env.CLOUDINARY_*` values are typed as `string | undefined`. The `cloudinary.config()` call currently uses `as any` to suppress the error. The correct fix is to provide fallback empty strings so the values are always `string`, plus a runtime warning when they are absent.
+
+**Change:**
+```typescript
+// BEFORE
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+} as any);
+
+// AFTER
+const cloudName = process.env.CLOUDINARY_CLOUD_NAME ?? '';
+const apiKey    = process.env.CLOUDINARY_API_KEY    ?? '';
+const apiSecret = process.env.CLOUDINARY_API_SECRET ?? '';
+
+if (!cloudName || !apiKey || !apiSecret) {
+  logger.warn('⚠️  Cloudinary credentials missing. Image uploads will not work.');
+}
+
+cloudinary.config({
+  cloud_name: cloudName,
+  api_key:    apiKey,
+  api_secret: apiSecret,
+});
+```
+
+The `as any` cast is removed; TypeScript now infers all three values as `string`.
+
+---
+
+### Group B — Backend TypeScript / Express Handler Fixes (Requirements 4, 5, 6)
+
+#### Fix B1 — Coupon Routes: ObjectId Guards and Missing Returns (Requirement 4)
+
+**File:** `matasree-backend/src/routes/couponRoutes.ts`
+
+Two issues:
+
+1. The `POST /apply` handler assigns `coupon.usedOrderId` and `coupon.userId` without `return` guards after earlier `res` calls, risking double-response crashes.
+2. The ObjectId constructor is called unconditionally, which can throw if `orderId` or `userId` is undefined.
+
+**Changes to `POST /apply` handler:**
+
+All `res.status(...).json(...)` calls in conditional branches must be prefixed with `return`. The ObjectId assignments must be guarded:
+
+```typescript
+// BEFORE (excerpt)
+if (coupon.isUsed) {
+  return res.status(400).json(new ApiResponse(false, 'Coupon already used', null, 400));
+}
+// ... other checks without return ...
+coupon.isUsed = true;
+coupon.usedAt = new Date();
+if (orderId) coupon.usedOrderId = new mongoose.Types.ObjectId(orderId);
+if (authReq.user?.userId) coupon.userId = new mongoose.Types.ObjectId(authReq.user.userId);
+
+// AFTER — every branch has return; ObjectId assignments are guarded
+if (coupon.isUsed) {
+  return res.status(400).json(new ApiResponse(false, 'Coupon already used', null, 400));
+}
+if (coupon.source === 'newsletter') {
+  if (authReq.user && coupon.email.toLowerCase() !== authReq.user.email.toLowerCase()) {
+    return res.status(400).json(new ApiResponse(false, 'This 10% off code belongs to another account', null, 400));
+  }
+  if (authReq.user) {
+    const usedNewsletterCoupon = await Coupon.findOne({
+      userId: authReq.user.userId, source: 'newsletter', isUsed: true
+    });
+    if (usedNewsletterCoupon) {
+      return res.status(400).json(new ApiResponse(false, 'You have already used a 10% off welcome code', null, 400));
+    }
+  }
+}
+if (new Date() > coupon.expiresAt) {
+  return res.status(400).json(new ApiResponse(false, 'Coupon expired', null, 400));
+}
+coupon.isUsed = true;
+coupon.usedAt = new Date();
+if (orderId && typeof orderId === 'string' && orderId.trim().length > 0) {
+  coupon.usedOrderId = new mongoose.Types.ObjectId(orderId);
+}
+if (authReq.user?.userId && typeof authReq.user.userId === 'string') {
+  coupon.userId = new mongoose.Types.ObjectId(authReq.user.userId);
+}
+await coupon.save();
+return res.status(200).json(new ApiResponse(true, 'Coupon applied successfully', coupon));
+```
+
+**Changes to `POST /validate` handler:**
+
+All branches that call `res.status(...).json(...)` must be prefixed with `return`. The final success response must also use `return`.
+
+---
+
+#### Fix B2 — Missing Return Statements in Controllers (Requirement 5)
+
+The following controllers have conditional `res.status(...).json(...)` calls **without** a preceding `return`, causing potential "headers already sent" crashes when execution falls through.
+
+**Files and specific locations:**
+
+**`matasree-backend/src/controllers/cartController.ts`**
+
+In `addToCart`:
+```typescript
+// BEFORE
+if (!productId || !quantity || quantity < 1) {
+  res.status(400).json(new ApiResponse(false, 'Invalid product or quantity', null, 400));
+}
+// AFTER
+if (!productId || !quantity || quantity < 1) {
+  return res.status(400).json(new ApiResponse(false, 'Invalid product or quantity', null, 400));
+}
+```
+
+Apply the same pattern to every early-exit `res` call in `updateCartItem` and `removeFromCart`.
+
+**`matasree-backend/src/controllers/categoryController.ts`**
+
+`getCategoryById`, `createCategory`, `updateCategory`, `deleteCategory` — add `return` before every `res.status(404)` and `res.status(400)` call inside conditional branches.
+
+**`matasree-backend/src/controllers/orderController.ts`**
+
+`createOrder`, `verifyPayment`, `updateOrderStatus` — add `return` before every early-exit `res` call. Example:
+```typescript
+// BEFORE
+if (error) {
+  res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
+}
+// AFTER
+if (error) {
+  return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
+}
+```
+
+**`matasree-backend/src/controllers/partnershipController.ts`**
+
+`submitPartnershipApplication`, `getPartnershipApplicationById`, `updatePartnershipStatus` — add `return` before every conditional `res.status(...)` call.
+
+**`matasree-backend/src/controllers/productController.ts`**
+
+`createProduct`, `updateProduct`, `deleteProduct` — `return` before every early-exit `res` call in validation branches.
+
+**Note on `addressController.ts`:** The existing code already uses `return res.status(...)` consistently; no changes needed.
+
+---
+
+#### Fix B3 — Auth Controller: issueTokens Type Mismatch (Requirement 6)
+
+**File:** `matasree-backend/src/controllers/authController.ts`
+
+In `oauthCallback`, the `meta` object is passed as `as any`. This is not needed because `authService.issueTokens` already accepts `meta?: { userAgent?: string; ipAddress?: string }`, and `req.headers['user-agent']` is `string | string[] | undefined`. A simple cast to `string | undefined` is sufficient and type-safe.
+
+**Change:**
+```typescript
+// BEFORE
+const { accessToken } = await issueTokens(user, res, {
+  userAgent: req.headers['user-agent'] as string,
+  ipAddress: req.ip,
+} as any);
+
+// AFTER — remove the outer "as any"; cast only the header value
+const { accessToken } = await issueTokens(user, res, {
+  userAgent: req.headers['user-agent'] as string | undefined,
+  ipAddress: req.ip,
+});
+```
+
+`authService.ts` already types `meta.userAgent` as `string | undefined` — no changes needed there.
+
+---
+
+### Group C — Backend Feature Fixes (Requirements 2, 3, 8, 9, 10, 11, 18)
+
+#### Fix C1 — Cart Routes: Backend Contract Alignment (Requirement 2)
+
+**File:** `matasree-backend/src/routes/cartRoutes.ts`
+
+The backend already has `PUT /update` and `POST /remove` registered and the controller reads `productId` from `req.body`. This is already correct. The fix is entirely on the frontend (see Fix F1/F2).
+
+**Validation guard added to `cartController.ts` `removeFromCart`:**
+```typescript
+// Add check for missing productId in body
+export const removeFromCart = async (req: any, res: Response) => {
+  try {
+    const { productId } = req.body;
+    if (!productId) {
+      return res.status(400).json(new ApiResponse(false, 'productId is required', null, 400));
+    }
+    // ... existing logic
+```
+
+---
+
+#### Fix C2 — Order Confirmation Email (Requirements 3 & 21)
+
+**File:** `matasree-backend/src/utils/email.ts`
+
+Add a new exported function `sendOrderConfirmationEmail` that accepts order details and recipient email and returns `boolean`.
+
+```typescript
+export interface OrderConfirmationData {
+  orderNumber: string;
+  items: Array<{
+    name: string;
+    quantity: number;
+    price: number;
+  }>;
+  totalAmount: number;
+  shippingAddress: {
+    name: string;
+    addressLine1: string;
+    addressLine2?: string;
+    city: string;
+    state: string;
+    pincode: string;
+    phone: string;
+  };
+  paymentMethod: 'cod' | 'razorpay';
+}
+
+export const sendOrderConfirmationEmail = async (
+  order: OrderConfirmationData,
+  recipientEmail: string
+): Promise<boolean> => {
+  try {
+    const paymentText = order.paymentMethod === 'cod'
+      ? 'Cash on Delivery - pay when your order arrives'
+      : 'Online Payment - payment confirmed';
+
+    const itemsTableRows = order.items.map(item => `
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #eee;">${item.name}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${item.quantity}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">₹${item.price}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">₹${item.price * item.quantity}</td>
+      </tr>
+    `).join('');
+
+    const address = order.shippingAddress;
+    const addressText = [
+      address.name,
+      address.addressLine1,
+      address.addressLine2,
+      `${address.city}, ${address.state} - ${address.pincode}`,
+      address.phone,
+    ].filter(Boolean).join('<br>');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; background-color: #f5f5f5; }
+          .container { max-width: 600px; margin: 20px auto; background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          .header { text-align: center; margin-bottom: 30px; }
+          .logo { font-size: 24px; font-weight: bold; color: #ff8c00; }
+          .section-title { color: #ff8c00; font-size: 16px; font-weight: bold; margin: 24px 0 8px; border-bottom: 2px solid #ff8c00; padding-bottom: 4px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { background: #fff8f0; padding: 10px 8px; text-align: left; font-size: 13px; color: #555; }
+          .total-row td { font-weight: bold; font-size: 16px; color: #ff8c00; padding: 12px 8px; border-top: 2px solid #ff8c00; }
+          .address-box { background: #f9f9f9; padding: 16px; border-radius: 6px; font-size: 14px; line-height: 1.8; }
+          .payment-badge { display: inline-block; background: #fff3e0; color: #e65100; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; }
+          .footer { text-align: center; color: #999; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">🌶️ Matasree</div>
+            <p style="color:#666;margin-top:5px;">Premium Spices &amp; Masalas</p>
+            <h2 style="color:#333;margin-top:16px;">Order Confirmed!</h2>
+            <p style="color:#666;font-size:14px;">Order #${order.orderNumber}</p>
+          </div>
+
+          <p class="section-title">Items Ordered</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th style="text-align:center;">Qty</th>
+                <th style="text-align:right;">Price</th>
+                <th style="text-align:right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsTableRows}
+              <tr class="total-row">
+                <td colspan="3">Total</td>
+                <td style="text-align:right;">₹${order.totalAmount}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p class="section-title">Shipping Address</p>
+          <div class="address-box">${addressText}</div>
+
+          <p class="section-title">Payment</p>
+          <span class="payment-badge">${paymentText}</span>
+
+          <div class="footer">
+            <p>Questions? Email us at support@matasreesuper.com</p>
+            <p>© 2026 Matasree. All rights reserved.</p>
+            <p>This is an automated message, please do not reply to this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `Matasree <${process.env.EMAIL_USER}>`,
+      to: recipientEmail,
+      subject: `Order Confirmed - #${order.orderNumber} | Matasree`,
+      html,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Order confirmation email sent to ${recipientEmail}: ${info.response}`);
+    return true;
+  } catch (error: any) {
+    console.error(`❌ Failed to send order confirmation to ${recipientEmail}:`, error.message);
+    return false;
+  }
+};
+```
+
+**File:** `matasree-backend/src/controllers/orderController.ts`
+
+Import and call `sendOrderConfirmationEmail` in both `createOrder` (COD path) and `verifyPayment`. The email failure must not roll back the order.
+
+```typescript
+// Add import at top
+import { sendOrderConfirmationEmail } from '../utils/email';
+import User from '../models/User';
+```
+
+In `createOrder`, after clearing the cart for COD orders:
+```typescript
+// After: await Cart.findOneAndUpdate(...) for COD
+if (paymentMethod === 'cod') {
+  // Get user email for confirmation
+  try {
+    const orderUser = await User.findById(req.user?.userId).select('email');
+    if (orderUser?.email) {
+      const emailSent = await sendOrderConfirmationEmail(
+        {
+          orderNumber: order.orderNumber,
+          items: orderItems.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+          totalAmount,
+          shippingAddress: order.shippingAddress as any,
+          paymentMethod: 'cod',
+        },
+        orderUser.email
+      );
+      if (!emailSent) {
+        logger.warn(`Order confirmation email failed for order ${order.orderNumber}`);
+      }
+    }
+  } catch (emailError: any) {
+    logger.warn(`Order confirmation email error: ${emailError.message}`);
+  }
+}
+```
+
+In `verifyPayment`, after updating the order status to 'confirmed':
+```typescript
+// After: Payment.findOneAndUpdate(...)
+try {
+  const orderUser = await User.findById(order?.userId).select('email');
+  if (orderUser?.email && order) {
+    const populatedOrder = await Order.findById(orderId);
+    if (populatedOrder) {
+      const emailSent = await sendOrderConfirmationEmail(
+        {
+          orderNumber: populatedOrder.orderNumber,
+          items: (populatedOrder.items as any[]).map(i => ({
+            name: i.name, quantity: i.quantity, price: i.price,
+          })),
+          totalAmount: populatedOrder.totalAmount,
+          shippingAddress: populatedOrder.shippingAddress as any,
+          paymentMethod: 'razorpay',
+        },
+        orderUser.email
+      );
+      if (!emailSent) {
+        logger.warn(`Order confirmation email failed for order ${populatedOrder.orderNumber}`);
+      }
+    }
+  }
+} catch (emailError: any) {
+  logger.warn(`Order confirmation email error: ${emailError.message}`);
+}
+```
+
+---
+
+#### Fix C3 — Password Reset OTP: Preserve Across Verify Step (Requirement 8)
+
+**File:** `matasree-backend/src/controllers/authController.ts`
+
+The current `verifyPasswordResetOtp` deletes the OTP entry (`delete passwordResetOtpStore[email]`) on success. This means `resetPassword` cannot find the OTP. The fix is to not delete the entry in the verify step — `resetPassword` already deletes it after use.
+
+```typescript
+// BEFORE — verifyPasswordResetOtp (last 3 lines of the success path)
+if (stored.otp !== otp) { stored.attempts++; return res.status(400)... }
+
+delete passwordResetOtpStore[email];   // ← BUG: deletes before resetPassword can use it
+res.status(200).json(new ApiResponse(true, 'OTP verified successfully'));
+
+// AFTER — remove the delete; resetPassword handles cleanup
+if (stored.otp !== otp) { stored.attempts++; return res.status(400)... }
+
+// Do NOT delete here — resetPassword will consume and delete the entry
+res.status(200).json(new ApiResponse(true, 'OTP verified successfully'));
+```
+
+`resetPassword` already contains the correct logic: it verifies the OTP and then calls `delete passwordResetOtpStore[email]`. No change needed there.
+
+---
+
+#### Fix C4 — Admin Routes: User Role and Delete Endpoints (Requirement 9)
+
+**File:** `matasree-backend/src/routes/adminRoutes.ts`
+
+Add two routes after the existing ones:
+```typescript
+router.put('/users/:id/role', adminController.updateUserRole);
+router.delete('/users/:id', adminController.deleteUser);
+```
+
+**File:** `matasree-backend/src/controllers/adminController.ts`
+
+Add two new exported handlers:
+
+```typescript
+/**
+ * Update user role (Admin)
+ */
+export const updateUserRole = async (req: any, res: Response) => {
+  try {
+    const { role } = req.body;
+    if (!['customer', 'admin'].includes(role)) {
+      return res.status(400).json(new ApiResponse(false, 'Invalid role. Must be "customer" or "admin"', null, 400));
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { role },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json(new ApiResponse(false, 'User not found', null, 404));
+    }
+
+    res.status(200).json(new ApiResponse(true, 'User role updated', user));
+  } catch (error: any) {
+    res.status(500).json(new ApiResponse(false, error.message || 'Failed to update user role', null, 500));
+  }
+};
+
+/**
+ * Delete user (Admin)
+ */
+export const deleteUser = async (req: any, res: Response) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+
+    if (!user) {
+      return res.status(404).json(new ApiResponse(false, 'User not found', null, 404));
+    }
+
+    res.status(200).json(new ApiResponse(true, 'User deleted successfully'));
+  } catch (error: any) {
+    res.status(500).json(new ApiResponse(false, error.message || 'Failed to delete user', null, 500));
+  }
+};
+```
+
+The existing `router.use(verifyToken, verifyAdmin)` at the top of `adminRoutes.ts` automatically applies auth to all routes, including these two new ones.
+
+---
+
+#### Fix C5 — Coupon Model: Add maxUses Field (Requirement 10)
+
+**File:** `matasree-backend/src/models/Coupon.ts`
+
+Add `maxUses` to the `ICoupon` interface and to the Mongoose schema:
+
+```typescript
+// In ICoupon interface, add:
+maxUses: number;   // 0 = unlimited
+
+// In couponSchema, add:
+maxUses: {
+  type: Number,
+  default: 0,
+  min: 0,
+},
+```
+
+**File:** `matasree-backend/src/routes/couponRoutes.ts`
+
+In the `POST /validate` handler, add a maxUses check after the `isUsed` check:
+
+```typescript
+// After checking coupon.isUsed:
+if (coupon.maxUses > 0) {
+  const usedCount = await Coupon.countDocuments({ code: coupon.code, isUsed: true });
+  if (usedCount >= coupon.maxUses) {
+    return res.status(400).json(
+      new ApiResponse(false, 'This coupon has reached its maximum usage limit', null, 400)
+    );
+  }
+}
+```
+
+In the `POST /admin/create` handler, accept `maxUses` from the request body:
+
+```typescript
+const { email, discountType, discountValue, minOrderAmount, maxDiscount, expiresInDays, source, maxUses } = req.body;
+
+const coupon = await Coupon.create({
+  // ... existing fields ...
+  maxUses: maxUses !== undefined ? maxUses : 0,
+});
+```
+
+---
+
+#### Fix C6 — Analytics Payments: Structured Response Shape (Requirement 11)
+
+**File:** `matasree-backend/src/controllers/adminController.ts`
+
+The `getPaymentSummary` handler currently returns the raw aggregate array. Transform it into the expected structured object:
+
+```typescript
+export const getPaymentSummary = async (req: any, res: Response) => {
+  try {
+    const paymentSummary = await Payment.aggregate([
+      {
+        $group: {
+          _id: '$method',
+          total: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Transform raw array into structured object
+    const razorpayEntry = paymentSummary.find(p => p._id === 'razorpay');
+    const codEntry      = paymentSummary.find(p => p._id === 'cod');
+
+    const totalPayments   = paymentSummary.reduce((sum, p) => sum + p.count, 0);
+    const razorpayPayments = razorpayEntry?.count ?? 0;
+    const codPayments      = codEntry?.count      ?? 0;
+
+    res.status(200).json(new ApiResponse(true, 'Payment summary fetched', {
+      totalPayments,
+      razorpayPayments,
+      codPayments,
+      paymentMethods: paymentSummary,
+    }));
+  } catch (error: any) {
+    res.status(500).json(new ApiResponse(false, error.message || 'Failed to fetch payment summary', null, 500));
+  }
+};
+```
+
+---
+
+#### Fix C7 — Product Routes: Featured Route Registration Order (Requirement 18)
+
+**File:** `matasree-backend/src/routes/productRoutes.ts`
+
+The file already has `GET /featured` registered **before** `GET /:id` — this is already correct. No change needed.
+
+The `getFeaturedProducts` handler in `productController.ts` queries `{ isBestseller: true }`, which is the flag used in the Product model. Requirement 18.2 says to also check `isFeatured`; since the model only has `isBestseller`, the query should be updated to use `$or` to handle both field names for forward compatibility:
+
+```typescript
+// BEFORE
+const products = await Product.find({ isBestseller: true })
+  .populate('category')
+  .limit(8)
+  .sort({ createdAt: -1 });
+
+// AFTER — also check isNewProduct as a fallback, keep backward compat
+const products = await Product.find({
+  $or: [{ isBestseller: true }, { isNewProduct: true }]
+})
+  .populate('category')
+  .limit(8)
+  .sort({ createdAt: -1 });
+```
+
+The handler already returns HTTP 200 with an empty array when no products are found (Mongoose returns `[]`).
+
+---
+
+#### Fix C8 — Contact Form Confirmation Email (Requirement 19)
+
+**File:** `matasree-backend/src/routes/emailRoutes.ts`
+
+The contact route already sends both admin notification and customer reply emails using `Promise.all(...)`. The implementation is already correct and satisfies Requirement 19. No code change is needed.
+
+---
+
+#### Fix C9 — Newsletter Coupon Delivery (Requirement 20)
+
+**File:** `matasree-backend/src/routes/emailRoutes.ts`
+
+The `POST /subscribe` handler already:
+- Requires authentication (`verifyToken`)
+- Generates a unique coupon code
+- Sends the welcome email with coupon code, 30-day expiry, ₹199 minimum, ₹200 max discount
+- Returns existing coupon code without re-sending email if already subscribed
+- Returns the coupon code in the response body even if email fails (fire-and-forget approach)
+
+The implementation already satisfies Requirement 20. No code change is needed.
+
+---
+
+### Group D — Frontend Fixes (Requirements 2, 12, 13, 14, 15, 16, 17)
+
+#### Fix D1 — api.ts: Fix updateCartItem Body (Requirements 2 & 12)
+
+**File:** `matasree-superstore-main/src/services/api.ts`
+
+```typescript
+// BEFORE
+updateCartItem(itemId: string, quantity: number) {
+  return this.client.put('/cart/update', { itemId, quantity });
+}
+
+// AFTER
+updateCartItem(productId: string, quantity: number) {
+  return this.client.put('/cart/update', { productId, quantity });
+}
+```
+
+---
+
+#### Fix D2 — api.ts: Fix removeFromCart Method and Path (Requirements 2 & 13)
+
+**File:** `matasree-superstore-main/src/services/api.ts`
+
+```typescript
+// BEFORE
+removeFromCart(itemId: string) {
+  return this.client.delete(`/cart/remove/${itemId}`);
+}
+
+// AFTER
+removeFromCart(productId: string) {
+  return this.client.post('/cart/remove', { productId });
+}
+```
+
+---
+
+#### Fix D3 — Newsletter Subscription Auth Guard (Requirement 14)
+
+**File:** Any component invoking `apiClient.generateNewsletterCoupon()` or `apiClient.subscribeNewsletter()`.
+
+The guard pattern to apply before calling the API:
+```tsx
+const { isAuthenticated } = useAuthStore();
+
+const handleSubscribe = async () => {
+  if (!isAuthenticated) {
+    toast.info('Please log in to receive your exclusive discount code.');
+    return;  // Do NOT call the API
+  }
+  // proceed with API call
+  const result = await apiClient.generateNewsletterCoupon();
+  // display coupon code to user
+};
+```
+
+The UI element for unauthenticated users should display "Log in to subscribe" instead of the subscribe button. This replaces the silent 401 failure.
+
+---
+
+#### Fix D4 — AddressesPage: Fix Double Data Unwrapping (Requirement 15)
+
+**File:** `matasree-superstore-main/src/pages/AddressesPage.tsx`
+
+The response interceptor in `api.ts` unwraps `response.data` to the top level. So the `useAddresses` hook data already contains `{ success, data: [...addresses], statusCode }`. The current code accesses `addressesData.data?.data` which is one level too deep.
+
+```tsx
+// BEFORE
+const addresses = useMemo(() => {
+  if (!addressesData) return [];
+  const data = addressesData.data?.data || addressesData.data?.addresses || addressesData.data || [];
+  return Array.isArray(data) ? data : [];
+}, [addressesData]);
+
+// AFTER — the interceptor already unwraps once; backend returns { success, data: [...] }
+const addresses = useMemo(() => {
+  if (!addressesData) return [];
+  // addressesData is the already-unwrapped ApiResponse: { success, data: [...], message }
+  const data = addressesData.data || [];
+  return Array.isArray(data) ? data : [];
+}, [addressesData]);
+```
+
+---
+
+#### Fix D5 — AdminUsers: Wire to Existing Admin Endpoints (Requirement 16)
+
+**File:** `matasree-superstore-main/src/pages/AdminUsers.tsx`
+
+The component already calls `apiClient.updateUserRole(userId, newRole)` and `apiClient.deleteUser(userId)` in `handleRoleUpdate` and `handleDeleteUser` respectively. These map to the new `PUT /admin/users/:id/role` and `DELETE /admin/users/:id` endpoints added in Fix C4.
+
+The `api.ts` methods `updateUserRole` and `deleteUser` already exist and send to the correct paths. No frontend changes are needed beyond verifying the endpoints are registered on the backend (Fix C4).
+
+---
+
+#### Fix D6 — AdminAnalytics: Consume Structured Payments Shape (Requirement 17)
+
+**File:** Any AdminAnalytics component that reads from `GET /admin/analytics/payments`.
+
+The component should read the structured fields directly instead of iterating over a raw array:
+
+```tsx
+// BEFORE (incorrect — treating response as array)
+const totalCount = paymentsData?.reduce((sum: number, p: any) => sum + p.count, 0);
+
+// AFTER (correct — reading structured fields)
+const { totalPayments, razorpayPayments, codPayments, paymentMethods } = paymentsData || {};
+
+// Render:
+<p>Total Payments: {totalPayments ?? 0}</p>
+<p>Razorpay: {razorpayPayments ?? 0}</p>
+<p>COD: {codPayments ?? 0}</p>
+{(!paymentMethods || paymentMethods.length === 0) && (
+  <p>No payment data available</p>
+)}
+```
+
+---
+
+## Component Interaction Diagram
+
+```
+Frontend                         Backend
+--------                         -------
+api.ts.updateCartItem(productId)  →  PUT  /api/cart/update       { productId, quantity }
+api.ts.removeFromCart(productId)  →  POST /api/cart/remove       { productId }
+api.ts.updateUserRole(id, role)   →  PUT  /api/admin/users/:id/role { role }
+api.ts.deleteUser(id)             →  DELETE /api/admin/users/:id
+api.ts.validateCoupon(code, amt)  →  POST /api/coupons/validate  (+ maxUses check)
+orderController.createOrder       →  email.sendOrderConfirmationEmail (COD path)
+orderController.verifyPayment     →  email.sendOrderConfirmationEmail (Razorpay path)
+GET /api/admin/analytics/payments →  { totalPayments, razorpayPayments, codPayments, paymentMethods }
+```
+
+---
+
+## Data Models
+
+### ICoupon (Updated — adds maxUses)
+
+```typescript
+interface ICoupon {
+  _id: mongoose.Types.ObjectId;
+  code: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  minOrderAmount: number;
+  maxDiscount: number;
+  maxUses: number;           // NEW — 0 means unlimited
+  email: string;
+  userId?: mongoose.Types.ObjectId;
+  isUsed: boolean;
+  usedAt?: Date;
+  usedOrderId?: mongoose.Types.ObjectId;
+  expiresAt: Date;
+  source: 'newsletter' | 'admin' | 'promotion';
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### OrderConfirmationData (New — for email utility)
+
+```typescript
+interface OrderConfirmationData {
+  orderNumber: string;
+  items: Array<{ name: string; quantity: number; price: number }>;
+  totalAmount: number;
+  shippingAddress: {
+    name: string;
+    addressLine1: string;
+    addressLine2?: string;
+    city: string;
+    state: string;
+    pincode: string;
+    phone: string;
+  };
+  paymentMethod: 'cod' | 'razorpay';
+}
+```
+
+---
+
+## Error Handling Strategy
+
+All fixes follow the existing pattern in the codebase:
+
+- **Email failures**: Log the error with `logger.warn()` or `console.error()` and continue execution — the primary business operation (order creation, contact form submission) is not rolled back.
+- **Validation failures**: Return early with `return res.status(400).json(new ApiResponse(...))`.
+- **Not-found cases**: Return `return res.status(404).json(new ApiResponse(...))`.
+- **Server errors**: Caught in `catch` blocks and returned as `res.status(500)`.
+
+---
+
+## Correctness Properties
+
+*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+
+### Property 1: Password Reset OTP Preserved After Verify Step
+
+*For any* valid password reset OTP stored in `passwordResetOtpStore`, calling `verifyPasswordResetOtp` with the correct OTP and email SHALL NOT remove the entry from the store, so that a subsequent call to `resetPassword` with the same OTP can still locate and consume it.
+
+**Validates: Requirements 8.1, 8.2**
+
+---
+
+### Property 2: Coupon maxUses Enforcement
+
+*For any* coupon whose `maxUses` field is greater than zero, if the number of documents with `isUsed: true` and the same coupon code equals or exceeds `maxUses`, then the `POST /coupons/validate` handler SHALL reject the coupon with a 400 response, regardless of the coupon's other fields.
+
+**Validates: Requirements 10.3**
+
+---
+
+### Property 3: Payment Summary Totals Consistency
+
+*For any* raw payment aggregate array returned by MongoDB, the structured response produced by `getPaymentSummary` SHALL satisfy: `totalPayments === sum of all count values`, `razorpayPayments === count for method "razorpay" or 0`, and `codPayments === count for method "cod" or 0`.
+
+**Validates: Requirements 11.1, 11.2, 11.3, 11.4**
+
+---
+
+### Property 4: Newsletter Coupon Idempotence
+
+*For any* authenticated user who already has an existing unused newsletter coupon, a second call to `POST /api/email/subscribe` SHALL return the same coupon code without creating a new coupon document, leaving the total count of newsletter coupons for that user unchanged.
+
+**Validates: Requirements 20.4**
+
+---
+
+### Property 5: Order Confirmation Email Payment Method Label
+
+*For any* order, the HTML generated by `sendOrderConfirmationEmail` SHALL contain the string "Cash on Delivery" when `paymentMethod` is `"cod"`, and SHALL contain the string "Online Payment" when `paymentMethod` is `"razorpay"`.
+
+**Validates: Requirements 21.3, 21.4**
+
+---
+
+## Implementation Sequence
+
+The fixes should be applied in this order to avoid blocked compilation:
+
+1. **Models first** — `Coupon.ts` (add `maxUses`) to unblock route handler changes.
+2. **Utils** — `email.ts` (add `sendOrderConfirmationEmail`) to unblock controller changes.
+3. **Backend infrastructure** — `server.ts` (CORS), `cloudinary.ts` (type fix).
+4. **Controllers** — `adminController.ts` (new handlers + analytics), `authController.ts` (OTP fix + type fix), `orderController.ts` (email integration + return statements), `cartController.ts`, `categoryController.ts`, `partnershipController.ts`, `productController.ts` (return statements).
+5. **Routes** — `adminRoutes.ts` (new routes), `couponRoutes.ts` (ObjectId guards + maxUses validation + return statements), `productRoutes.ts` (verify route order).
+6. **Frontend** — `api.ts` (cart method fixes), `AddressesPage.tsx` (data unwrap fix), AdminAnalytics component (structured shape).
+7. **Config files** — `.env.example` (FRONTEND_URL update).
+

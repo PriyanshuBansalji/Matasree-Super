@@ -63,6 +63,9 @@ const cartSchema = new mongoose_1.Schema({
             },
         },
     ],
+    abandonmentEmailSentAt: {
+        type: Date,
+    },
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Cart', cartSchema);
 //# sourceMappingURL=Cart.js.map

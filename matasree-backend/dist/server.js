@@ -64,6 +64,7 @@ const emailRoutes_1 = __importDefault(require("./routes/emailRoutes"));
 const partnershipRoutes_1 = __importDefault(require("./routes/partnershipRoutes"));
 const reviewRoutes_1 = __importDefault(require("./routes/reviewRoutes"));
 const couponRoutes_1 = __importDefault(require("./routes/couponRoutes"));
+const wishlistRoutes_1 = __importDefault(require("./routes/wishlistRoutes"));
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5001;
 // ============================================================
@@ -88,10 +89,12 @@ app.use((0, helmet_1.default)({
 const allowedOrigins = [
     'http://localhost:8000', // Frontend dev (Vite)
     'http://localhost:8001', // Frontend dev (Vite alt)
+    'http://localhost:8080', // Frontend dev (Vite port 8080)
     'http://127.0.0.1:8000', // Frontend dev (alt)
     'http://127.0.0.1:8001', // Frontend dev (alt)
+    'http://127.0.0.1:8080', // Frontend dev (alt port 8080)
     'http://localhost:5001', // Backend self
-    process.env.FRONTEND_URL || 'http://localhost:8000',
+    process.env.FRONTEND_URL || 'http://localhost:8080',
 ];
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
@@ -198,6 +201,7 @@ app.use('/api/email', emailRoutes_1.default);
 app.use('/api/partnership', partnershipRoutes_1.default);
 app.use('/api/reviews', reviewRoutes_1.default);
 app.use('/api/coupons', couponRoutes_1.default);
+app.use('/api/wishlist', wishlistRoutes_1.default);
 // Health check
 app.get('/api/health', (req, res) => {
     res.status(200).json({
@@ -219,7 +223,7 @@ const startServer = async () => {
         await (0, database_1.connectDB)();
         app.listen(PORT, () => {
             logger_1.default.info(`✅ Server running on http://localhost:${PORT}`);
-            logger_1.default.info(`📡 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:8000'}`);
+            logger_1.default.info(`📡 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:8080'}`);
             logger_1.default.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
         });
     }

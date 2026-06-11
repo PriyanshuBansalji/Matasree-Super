@@ -13,6 +13,9 @@ export interface ICoupon {
     usedOrderId?: mongoose.Types.ObjectId;
     expiresAt: Date;
     source: 'newsletter' | 'admin' | 'promotion';
+    maxUses: number;
+    usageCount: number;
+    categoryRestrictions?: string[];
     createdAt: Date;
     updatedAt: Date;
 }

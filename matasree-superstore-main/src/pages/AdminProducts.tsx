@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { ChevronLeft, Plus, Trash2, Edit, Search, X, Package, Upload, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import PageHelmet from '@/components/PageHelmet';
 
 interface Product {
   _id: string;
@@ -245,6 +246,12 @@ const AdminProducts = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <PageHelmet
+        title="Admin: Products | Matasree Super Masale"
+        description="Manage products on Matasree Super Masale admin panel."
+        canonicalUrl="https://matasreesuper.com/admin/products"
+        noIndex={true}
+      />
       <Navbar />
 
       <div className="container mx-auto px-4 py-8">

@@ -2,6 +2,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
 import { RotateCcw, Clock, DollarSign, HelpCircle, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
+import PageHelmet from '@/components/PageHelmet';
 
 const RefundPolicyPage = () => {
   const sections = [
@@ -29,12 +30,18 @@ const RefundPolicyPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHelmet
+        title="Refund Policy | Matasree Super Masale"
+        description="Read the Refund Policy for Matasree Super Masale — eligibility, process, and timelines for returns and refunds."
+        canonicalUrl="https://matasreesuper.com/refund-policy"
+        ogType="website"
+      />
       <Navbar />
       <CartDrawer />
       
-      <main>
+      <main id="main-content" aria-label="Refund policy">
         {/* Hero Section with Enhanced Design */}
-        <section className="relative py-24 md:py-36 overflow-hidden">
+        <section className="relative py-24 md:py-36 overflow-hidden" aria-labelledby="refund-hero-heading">
           {/* Background decorative elements */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5" />
           <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -translate-y-1/2" />
@@ -46,7 +53,7 @@ const RefundPolicyPage = () => {
                 <RotateCcw className="w-5 h-5 text-primary animate-pulse" />
                 <span className="text-foreground text-sm font-semibold tracking-wide">Customer Friendly</span>
               </div>
-              <h1 className="font-serif text-5xl md:text-6xl font-bold text-foreground mb-6 leading-tight">
+              <h1 id="refund-hero-heading" className="font-serif text-5xl md:text-6xl font-bold text-foreground mb-6 leading-tight">
                 Refund <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Policy</span>
               </h1>
               <p className="text-xl text-foreground/70 leading-relaxed max-w-2xl mx-auto">
@@ -57,7 +64,7 @@ const RefundPolicyPage = () => {
         </section>
 
         {/* Content Section */}
-        <section className="py-20 md:py-32 relative z-10">
+        <section className="py-20 md:py-32 relative z-10" aria-labelledby="refund-content-heading">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto">
               {/* Introduction Card */}
@@ -101,7 +108,7 @@ const RefundPolicyPage = () => {
               {/* Additional Policy Details */}
               <div className="mt-20">
                 <div className="text-center mb-16">
-                  <h2 className="text-3xl md:text-4xl font-serif font-bold text-foreground mb-4">
+                  <h2 id="refund-content-heading" className="text-3xl md:text-4xl font-serif font-bold text-foreground mb-4">
                     More Information
                   </h2>
                   <div className="w-20 h-1 bg-gradient-to-r from-primary to-accent rounded-full mx-auto" />

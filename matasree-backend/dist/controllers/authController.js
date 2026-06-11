@@ -3,14 +3,31 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetPassword = exports.verifyPasswordResetOtp = exports.sendPasswordResetOtp = exports.resendMobileOtp = exports.verifyMobileOtp = exports.sendMobileOtp = exports.resendEmailOtp = exports.verifyEmailOtp = exports.sendEmailOtp = exports.updateProfile = exports.getProfile = exports.logoutAll = exports.logout = exports.oauthCallback = exports.refreshToken = exports.login = exports.register = void 0;
+exports.resetPassword = exports.verifyPasswordResetOtp = exports.sendPasswordResetOtp = exports.resendMobileOtp = exports.verifyMobileOtp = exports.sendMobileOtp = exports.resendEmailOtp = exports.verifyEmailOtp = exports.sendEmailOtp = exports.updateProfile = exports.getProfile = exports.logoutAll = exports.logout = exports.getOAuthToken = exports.oauthCallback = exports.refreshToken = exports.login = exports.register = void 0;
 const User_1 = __importDefault(require("../models/User"));
 const password_1 = require("../utils/password");
 const response_1 = require("../utils/response");
 const email_1 = require("../utils/email");
 const authService_1 = require("../services/authService");
+const referralService_1 = require("../services/referralService");
 const logger_1 = __importDefault(require("../config/logger"));
 const joi_1 = __importDefault(require("joi"));
+// ============================================================
+// OAUTH TOKEN STORAGE (for secure one-time token retrieval)
+// ============================================================
+// Temporary storage: { userId: { accessToken, expiresAt, user } }
+// Token is consumed exactly once and cleaned up after 5 minutes
+const oauthTokenStore = {};
+// Cleanup expired tokens every minute
+setInterval(() => {
+    const now = Date.now();
+    Object.entries(oauthTokenStore).forEach(([userId, data]) => {
+        if (data.expiresAt < now) {
+            delete oauthTokenStore[userId];
+            logger_1.default.debug(`Cleaned up expired OAuth token for user ${userId}`);
+        }
+    });
+}, 60000);
 // ============================================================
 // VALIDATION SCHEMAS
 // ============================================================
@@ -53,10 +70,18 @@ const register = async (req, res) => {
             role: 'customer',
             provider: 'local',
         });
+        // Generate and assign a unique referral code for the new user (Req 11.1)
+        try {
+            await (0, referralService_1.generateReferralCode)(user._id);
+        }
+        catch (referralErr) {
+            // Non-fatal — log and continue; registration should not fail because of this
+            logger_1.default.warn(`[register] Could not generate referral code for user ${user._id.toString()}: ${referralErr.message}`);
+        }
         // Issue tokens (access + refresh with HTTP-only cookie)
         const { accessToken } = await (0, authService_1.issueTokens)(user, res, {
-            userAgent: req.headers['user-agent'],
-            ipAddress: req.ip,
+            ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] } : {}),
+            ...(req.ip ? { ipAddress: req.ip } : {}),
         });
         logger_1.default.info(`New user registered: ${email}`);
         res.status(201).json(new response_1.ApiResponse(true, 'Registration successful', {
@@ -66,7 +91,6 @@ const register = async (req, res) => {
                 email: user.email,
                 role: user.role,
                 avatar: user.avatar,
-                isAdmin: user.isAdmin || false,
             },
             accessToken,
         }));
@@ -103,8 +127,8 @@ const login = async (req, res) => {
         }
         // Issue tokens
         const { accessToken } = await (0, authService_1.issueTokens)(user, res, {
-            userAgent: req.headers['user-agent'],
-            ipAddress: req.ip,
+            ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] } : {}),
+            ...(req.ip ? { ipAddress: req.ip } : {}),
         });
         logger_1.default.info(`User logged in: ${email}`);
         res.status(200).json(new response_1.ApiResponse(true, 'Login successful', {
@@ -114,7 +138,6 @@ const login = async (req, res) => {
                 email: user.email,
                 role: user.role,
                 avatar: user.avatar,
-                isAdmin: user.isAdmin || false,
             },
             accessToken,
         }));
@@ -139,8 +162,8 @@ const refreshToken = async (req, res) => {
             return res.status(401).json(new response_1.ApiResponse(false, 'No refresh token provided', null, 401));
         }
         const result = await (0, authService_1.rotateRefreshToken)(token, res, {
-            userAgent: req.headers['user-agent'],
-            ipAddress: req.ip,
+            ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] } : {}),
+            ...(req.ip ? { ipAddress: req.ip } : {}),
         });
         res.status(200).json(new response_1.ApiResponse(true, 'Token refreshed', {
             user: result.user,
@@ -159,7 +182,8 @@ exports.refreshToken = refreshToken;
 // ============================================================
 /**
  * Handle OAuth callback (used for both Google and GitHub)
- * Issues tokens and redirects to frontend with access token
+ * Stores token in memory and redirects to frontend without token in URL
+ * Frontend fetches token from GET /api/auth/token endpoint
  */
 const oauthCallback = async (req, res) => {
     try {
@@ -167,22 +191,27 @@ const oauthCallback = async (req, res) => {
         if (!user) {
             return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8000'}/login?error=auth_failed`);
         }
-        // Issue tokens
+        // Issue tokens (refresh token set as httpOnly cookie by issueTokens)
         const { accessToken } = await (0, authService_1.issueTokens)(user, res, {
-            userAgent: req.headers['user-agent'],
-            ipAddress: req.ip,
+            ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] } : {}),
+            ...(req.ip ? { ipAddress: req.ip } : {}),
         });
-        // Redirect to frontend with access token in URL (frontend will extract and store it)
+        // Store token in memory for one-time retrieval by frontend (expires in 5 minutes)
+        oauthTokenStore[user._id.toString()] = {
+            accessToken,
+            expiresAt: Date.now() + 5 * 60 * 1000,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                avatar: user.avatar,
+            },
+        };
+        // Redirect to frontend WITHOUT token in URL (secure against URL history leaks)
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8000';
-        const redirectUrl = `${frontendUrl}/auth/callback?token=${accessToken}&user=${encodeURIComponent(JSON.stringify({
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            avatar: user.avatar,
-            isAdmin: user.isAdmin || false,
-        }))}`;
-        logger_1.default.info(`OAuth login successful: ${user.email} (${user.provider})`);
+        const redirectUrl = `${frontendUrl}/auth/callback`;
+        logger_1.default.info(`OAuth login successful: ${user.email} (${user.provider}), token stored for retrieval`);
         res.redirect(redirectUrl);
     }
     catch (error) {
@@ -191,6 +220,47 @@ const oauthCallback = async (req, res) => {
     }
 };
 exports.oauthCallback = oauthCallback;
+// ============================================================
+// OAUTH TOKEN RETRIEVAL (secure, one-time, cookie-authenticated)
+// ============================================================
+/**
+ * Get OAuth access token (called by frontend after OAuth redirect)
+ * Returns token exactly once, then destroys it
+ * Requires valid httpOnly refresh cookie from OAuth flow
+ */
+const getOAuthToken = async (req, res) => {
+    try {
+        const authReq = req;
+        const userId = authReq.user?.userId;
+        if (!userId) {
+            return res.status(401).json(new response_1.ApiResponse(false, 'Unauthorized', null, 401));
+        }
+        const userIdStr = userId.toString();
+        const tokenData = oauthTokenStore[userIdStr];
+        // Token not found or expired
+        if (!tokenData) {
+            return res.status(401).json(new response_1.ApiResponse(false, 'No token available. Please log in again.', null, 401));
+        }
+        // Token expired
+        if (tokenData.expiresAt < Date.now()) {
+            delete oauthTokenStore[userIdStr];
+            return res.status(401).json(new response_1.ApiResponse(false, 'Token expired. Please log in again.', null, 401));
+        }
+        // Consume token exactly once
+        const { accessToken, user } = tokenData;
+        delete oauthTokenStore[userIdStr];
+        logger_1.default.info(`OAuth token retrieved and consumed for user ${userId}`);
+        res.status(200).json(new response_1.ApiResponse(true, 'OAuth token retrieved', {
+            accessToken,
+            user,
+        }));
+    }
+    catch (error) {
+        logger_1.default.error('Get OAuth token error:', error);
+        res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to retrieve OAuth token', null, 500));
+    }
+};
+exports.getOAuthToken = getOAuthToken;
 // ============================================================
 // LOGOUT
 // ============================================================

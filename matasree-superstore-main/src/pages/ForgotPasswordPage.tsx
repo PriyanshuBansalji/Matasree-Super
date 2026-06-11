@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/services/api';
+import PageHelmet from '@/components/PageHelmet';
 
 const ForgotPasswordPage = () => {
     const { toast } = useToast();
@@ -192,6 +193,12 @@ const ForgotPasswordPage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+            <PageHelmet
+                title="Forgot Password | Matasree Super Masale"
+                description="Reset your Matasree Super Masale account password."
+                canonicalUrl="https://matasreesuper.com/forgot-password"
+                noIndex={true}
+            />
             {/* Decorative background */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-amber-100/30 to-orange-100/20 rounded-full blur-3xl translate-x-1/3 -translate-y-1/2" />
@@ -200,7 +207,7 @@ const ForgotPasswordPage = () => {
 
             <Navbar />
 
-            <main className="flex-1 container mx-auto px-4 py-12 flex items-center justify-center relative z-10">
+            <main id="main-content" className="flex-1 container mx-auto px-4 py-12 flex items-center justify-center relative z-10">
                 <Card className="w-full max-w-md shadow-2xl backdrop-blur-sm border border-white/50">
                     {/* Step 1: Enter Email */}
                     {step === 'email' && (
@@ -239,11 +246,13 @@ const ForgotPasswordPage = () => {
                                                         : 'border-gray-200 hover:border-amber-300'
                                                     }`}
                                                 disabled={loading}
+                                                aria-describedby={errors.email ? 'email-error' : undefined}
+                                                aria-invalid={!!errors.email}
                                             />
                                         </div>
                                         {errors.email && (
-                                            <div className="flex items-center gap-2 text-red-600 text-sm">
-                                                <AlertCircle className="w-4 h-4" />
+                                            <div id="email-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                                                <AlertCircle className="w-4 h-4" aria-hidden="true" />
                                                 {errors.email}
                                             </div>
                                         )}
@@ -319,11 +328,13 @@ const ForgotPasswordPage = () => {
                                                 maxLength={6}
                                                 className="py-6 border-2 border-blue-300 hover:border-blue-400 text-center text-2xl tracking-widest font-bold"
                                                 disabled={loading}
+                                                aria-describedby={errors.otp ? 'otp-error' : undefined}
+                                                aria-invalid={!!errors.otp}
                                             />
                                         </div>
                                         {errors.otp && (
-                                            <div className="flex items-center gap-2 text-red-600 text-sm">
-                                                <AlertCircle className="w-4 h-4" />
+                                            <div id="otp-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                                                <AlertCircle className="w-4 h-4" aria-hidden="true" />
                                                 {errors.otp}
                                             </div>
                                         )}
@@ -419,18 +430,21 @@ const ForgotPasswordPage = () => {
                                                         : 'border-gray-200 hover:border-green-300'
                                                     }`}
                                                 disabled={loading}
+                                                aria-describedby={errors.password ? 'password-error' : undefined}
+                                                aria-invalid={!!errors.password}
                                             />
                                             <button
                                                 type="button"
                                                 onClick={() => setShowPassword(!showPassword)}
+                                                aria-label={showPassword ? 'Hide new password' : 'Show new password'}
                                                 className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-green-600 transition-colors"
                                             >
-                                                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                                {showPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
                                             </button>
                                         </div>
                                         {errors.password && (
-                                            <div className="flex items-center gap-2 text-red-600 text-sm">
-                                                <AlertCircle className="w-4 h-4" />
+                                            <div id="password-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                                                <AlertCircle className="w-4 h-4" aria-hidden="true" />
                                                 {errors.password}
                                             </div>
                                         )}
@@ -457,18 +471,21 @@ const ForgotPasswordPage = () => {
                                                         : 'border-gray-200 hover:border-green-300'
                                                     }`}
                                                 disabled={loading}
+                                                aria-describedby={errors.confirmPassword ? 'confirm-password-error' : undefined}
+                                                aria-invalid={!!errors.confirmPassword}
                                             />
                                             <button
                                                 type="button"
                                                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                                                 className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-green-600 transition-colors"
                                             >
-                                                {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                                {showConfirmPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
                                             </button>
                                         </div>
                                         {errors.confirmPassword && (
-                                            <div className="flex items-center gap-2 text-red-600 text-sm">
-                                                <AlertCircle className="w-4 h-4" />
+                                            <div id="confirm-password-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
+                                                <AlertCircle className="w-4 h-4" aria-hidden="true" />
                                                 {errors.confirmPassword}
                                             </div>
                                         )}

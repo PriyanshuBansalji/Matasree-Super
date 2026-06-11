@@ -86,6 +86,26 @@ const orderSchema = new mongoose_1.Schema({
         enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'],
         default: 'pending',
     },
+    couponCode: {
+        type: String,
+    },
+    discountAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+    },
+    loyaltyPointsEarned: {
+        type: Number,
+    },
+    loyaltyPointsRedeemed: {
+        type: Number,
+    },
+    loyaltyDiscountAmount: {
+        type: Number,
+    },
 }, { timestamps: true });
+// Indexes for common query patterns
+orderSchema.index({ userId: 1, createdAt: -1 }, { background: true });
+orderSchema.index({ orderstatus: 1 }, { background: true });
 exports.default = mongoose_1.default.model('Order', orderSchema);
 //# sourceMappingURL=Order.js.map

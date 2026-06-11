@@ -7,6 +7,7 @@ import { apiClient } from '@/services/api';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
+import TestimonialSkeleton from '@/components/skeletons/TestimonialSkeleton';
 
 const fallbackTestimonials = [
   { id: '1', name: 'Priya Sharma', location: 'Delhi', rating: 5, text: 'The quality of Matasree spices is unmatched. My dal tadka has never tasted better! The aroma and freshness are incredible.', avatar: 'PS' },
@@ -86,7 +87,7 @@ const TestimonialsSection = () => {
   const titleY = useTransform(scrollYProgress, [0, 0.3], ['25%', '0%']);
   const titleOpacity = useTransform(scrollYProgress, [0, 0.2], [0, 1]);
 
-  const { data: reviewsData } = useQuery({
+  const { data: reviewsData, isLoading } = useQuery({
     queryKey: ['featured-reviews'],
     queryFn: () => apiClient.getFeaturedReviews(),
     staleTime: 5 * 60 * 1000,
@@ -156,9 +157,12 @@ const TestimonialsSection = () => {
 
         {/* Testimonials Grid */}
         <div className="grid md:grid-cols-3 gap-8 mb-16">
-          {allTestimonials.slice(0, 3).map((testimonial: typeof fallbackTestimonials[0], index: number) => (
-            <TestimonialCard key={testimonial.id} testimonial={testimonial} index={index} scrollProgress={scrollYProgress} />
-          ))}
+          {isLoading
+            ? [0, 1, 2].map((i) => <TestimonialSkeleton key={i} />)
+            : allTestimonials.slice(0, 3).map((testimonial: typeof fallbackTestimonials[0], index: number) => (
+              <TestimonialCard key={testimonial.id} testimonial={testimonial} index={index} scrollProgress={scrollYProgress} />
+            ))
+          }
         </div>
 
         {/* Submit Feedback CTA */}

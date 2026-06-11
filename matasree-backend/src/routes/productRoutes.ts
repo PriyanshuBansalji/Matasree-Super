@@ -8,6 +8,11 @@ const router = Router();
 // Public routes
 router.get('/', productController.getProducts);
 router.get('/featured', productController.getFeaturedProducts);
+// Search route must be registered before /:id to avoid route shadowing
+router.get('/search', productController.searchProducts);
+// Recently Viewed routes — must be registered before /:id to avoid route shadowing
+router.get('/recently-viewed', verifyToken, productController.getRecentlyViewed);
+router.post('/recently-viewed/:productId', verifyToken, productController.addToRecentlyViewed);
 router.get('/:id', productController.getProductById);
 
 // Admin routes

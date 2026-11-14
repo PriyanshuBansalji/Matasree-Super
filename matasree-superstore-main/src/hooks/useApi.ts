@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/services/api';
+import { useAuthStore } from '@/store/authStore';
 
 // ==================== AUTH HOOKS ====================
 
@@ -7,12 +8,8 @@ export const useLogin = () => {
   return useMutation({
     mutationFn: (credentials: { email: string; password: string }) =>
       apiClient.login(credentials),
-    onSuccess: (response) => {
-      localStorage.setItem('authToken', response.data.accessToken);
-      if (response.data.user) {
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-      }
-    },
+    // onSuccess intentionally empty — authStore.login() handles all storage via Zustand persist.
+    // The axios request interceptor reads localStorage 'authToken' which is written by authStore.
   });
 };
 
@@ -20,9 +17,7 @@ export const useRegister = () => {
   return useMutation({
     mutationFn: (data: { name: string; email: string; password: string }) =>
       apiClient.register(data),
-    onSuccess: (response) => {
-      localStorage.setItem('authToken', response.data.accessToken);
-    },
+    // onSuccess intentionally empty — authStore.register() handles storage.
   });
 };
 
@@ -139,9 +134,11 @@ export const useDeleteCategory = () => {
 // ==================== CART HOOKS ====================
 
 export const useCart = () => {
+  const { isAuthenticated, token } = useAuthStore();
   return useQuery({
     queryKey: ['cart'],
     queryFn: () => apiClient.getCart(),
+    enabled: isAuthenticated && !!token,
   });
 };
 
@@ -180,24 +177,29 @@ export const useRemoveFromCart = () => {
 // ==================== ORDERS HOOKS ====================
 
 export const useOrders = () => {
+  const { isAuthenticated, token } = useAuthStore();
   return useQuery({
     queryKey: ['my-orders'],
     queryFn: () => apiClient.getOrders(),
+    enabled: isAuthenticated && !!token,
   });
 };
 
 export const useAllOrders = (params?: any) => {
+  const { isAuthenticated, user, token } = useAuthStore();
   return useQuery({
     queryKey: ['all-orders', params],
     queryFn: () => apiClient.getAllOrders(params),
+    enabled: isAuthenticated && user?.role === 'admin' && !!token,
   });
 };
 
 export const useOrder = (id: string) => {
+  const { isAuthenticated, token } = useAuthStore();
   return useQuery({
     queryKey: ['order', id],
     queryFn: () => apiClient.getOrderById(id),
-    enabled: !!id,
+    enabled: !!id && isAuthenticated && !!token,
   });
 };
 
@@ -206,7 +208,7 @@ export const useCreateOrder = () => {
   return useMutation({
     mutationFn: (data: any) => apiClient.createOrder(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['my-orders'] }); // Bug 3 fix: was ['orders']
       queryClient.invalidateQueries({ queryKey: ['cart'] });
     },
   });
@@ -218,7 +220,7 @@ export const useCancelOrder = () => {
     mutationFn: (id: string) => apiClient.cancelOrder(id),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['my-orders'] }); // Bug 3 fix: was ['orders']
     },
   });
 };
@@ -226,9 +228,11 @@ export const useCancelOrder = () => {
 // ==================== ADDRESSES HOOKS ====================
 
 export const useAddresses = () => {
+  const { isAuthenticated, token } = useAuthStore();
   return useQuery({
     queryKey: ['addresses'],
     queryFn: () => apiClient.getAddresses(),
+    enabled: isAuthenticated && !!token,
   });
 };
 

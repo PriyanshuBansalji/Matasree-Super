@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
+const encryption_1 = require("../utils/encryption");
 const partnershipSchema = new mongoose_1.Schema({
     userId: {
         type: mongoose_1.default.Schema.Types.ObjectId,
@@ -88,12 +89,16 @@ const partnershipSchema = new mongoose_1.Schema({
         type: String,
         required: [true, 'Bank account number is required'],
         trim: true,
+        get: encryption_1.decrypt,
+        set: encryption_1.encrypt,
     },
     ifscCode: {
         type: String,
         required: [true, 'IFSC code is required'],
         trim: true,
         uppercase: true,
+        get: encryption_1.decrypt,
+        set: encryption_1.encrypt,
     },
     gstNumber: {
         type: String,
@@ -143,7 +148,11 @@ const partnershipSchema = new mongoose_1.Schema({
         type: String,
         trim: true,
     },
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true }
+});
 // Index for faster queries
 partnershipSchema.index({ userId: 1 });
 partnershipSchema.index({ email: 1 });

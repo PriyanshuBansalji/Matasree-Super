@@ -6,9 +6,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const partnershipController_1 = require("../controllers/partnershipController");
 const auth_1 = require("../middleware/auth");
+const captcha_1 = require("../middleware/captcha");
 const router = express_1.default.Router();
 // User routes (requires authentication)
-router.post('/apply', auth_1.verifyToken, partnershipController_1.submitPartnershipApplication);
+router.post('/apply', auth_1.verifyToken, captcha_1.verifyCaptcha, partnershipController_1.submitPartnershipApplication);
 router.get('/my-applications', auth_1.verifyToken, partnershipController_1.getPartnershipApplications);
 router.get('/application/:id', auth_1.verifyToken, partnershipController_1.getPartnershipApplicationById);
 // Admin routes (requires authentication and admin role)

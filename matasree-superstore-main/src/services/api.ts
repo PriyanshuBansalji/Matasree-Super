@@ -17,13 +17,27 @@ class ApiClient {
     // Request interceptor
     this.client.interceptors.request.use(
       (config) => {
+        // Public endpoints that must NOT send the auth token (prevents 431 on large JWTs)
+        const publicPaths = ['/categories', '/products', '/reviews/approved', '/reviews/featured', '/admin/recipes', '/admin/banners'];
+        const isPublic = publicPaths.some(p => config.url?.startsWith(p)) && (config.method || 'get').toLowerCase() === 'get';
+
         const token = localStorage.getItem('authToken');
-        if (token) {
+        if (token && !isPublic) {
           config.headers.Authorization = `Bearer ${token}`;
-          console.log('🔑 Token added to request:', config.url);
-        } else {
-          console.log('⚠️ No token found for request:', config.url);
         }
+
+        // Double-submit CSRF token for all state-changing requests
+        const safeMethods = ['get', 'head', 'options'];
+        if (!safeMethods.includes((config.method || 'get').toLowerCase())) {
+          const csrfToken = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('_csrf='))
+            ?.split('=')[1];
+          if (csrfToken) {
+            config.headers['X-CSRF-Token'] = csrfToken;
+          }
+        }
+
         return config;
       },
       (error) => Promise.reject(error)
@@ -71,8 +85,12 @@ class ApiClient {
             const refreshResponse = await axios.post(`${API_URL}/auth/refresh-token`, {}, { withCredentials: true });
             const newAccessToken = refreshResponse.data.data.accessToken;
 
-            // Save new token
+            // Save new token to localStorage AND sync authStore so the store never goes stale
             localStorage.setItem('authToken', newAccessToken);
+            // Dynamically import to avoid circular deps — authStore depends on apiClient
+            import('@/store/authStore').then(({ useAuthStore }) => {
+              useAuthStore.getState().setToken(newAccessToken);
+            });
             
             // Re-apply token and process queue
             this.client.defaults.headers.common['Authorization'] = 'Bearer ' + newAccessToken;
@@ -92,6 +110,10 @@ class ApiClient {
             localStorage.removeItem('authToken');
             localStorage.removeItem('user');
             
+            import('@/store/authStore').then(({ useAuthStore }) => {
+              useAuthStore.getState().logout();
+            });
+
             // Only redirect if not already on login/register pages
             if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
               window.location.href = '/login?session_expired=true';
@@ -216,6 +238,24 @@ class ApiClient {
     return this.client.put(`/orders/${id}`, data);
   }
 
+  verifyPayment(data: { orderId: string; cashfreeOrderId?: string; cfPaymentId?: string }) {
+    return this.client.post('/orders/verify-payment', data);
+  }
+
+  getInvoiceUrl(orderId: string) {
+    const baseURL = this.client.defaults.baseURL || 'http://localhost:5001/api';
+    return `${baseURL}/orders/${orderId}/invoice`;
+  }
+
+  processRefund(orderId: string, amount?: number) {
+    return this.client.post(`/orders/${orderId}/refund`, { amount });
+  }
+
+  // Admin: update order status (separate from generic update)
+  updateOrderStatus(id: string, status: string) {
+    return this.client.put(`/orders/${id}/status`, { orderstatus: status });
+  }
+
   // Addresses endpoints
   getAddresses() {
     return this.client.get('/addresses');
@@ -293,12 +333,24 @@ class ApiClient {
     return this.client.get('/admin/stats');
   }
 
-  getRevenueAnalytics() {
-    return this.client.get('/admin/analytics/revenue');
+  getRevenueAnalytics(params?: { startDate?: string; endDate?: string }) {
+    return this.client.get('/admin/analytics/revenue', { params });
   }
 
   getPaymentAnalytics() {
     return this.client.get('/admin/analytics/payments');
+  }
+
+  getLowStockProducts(threshold = 10) {
+    return this.client.get('/admin/products/low-stock', { params: { threshold } });
+  }
+
+  getTopSellingProducts(limit = 5) {
+    return this.client.get('/admin/products/top-selling', { params: { limit } });
+  }
+
+  getCouponAnalytics() {
+    return this.client.get('/admin/coupons/analytics');
   }
 
   getAllUsers(params?: any) {
@@ -326,6 +378,15 @@ class ApiClient {
     return this.client.post('/auth/reset-password', { email, otp, newPassword });
   }
 
+  // Profile
+  getProfile() {
+    return this.client.get('/auth/profile');
+  }
+
+  updateProfile(data: { name?: string; phone?: string }) {
+    return this.client.put('/auth/profile', data);
+  }
+
   // File upload
   uploadImage(formData: FormData) {
     return this.client.post('/products/upload/image', formData, {
@@ -335,14 +396,11 @@ class ApiClient {
     });
   }
 
-  // Payment verification
-  verifyPayment(data: { orderId: string; razorpayPaymentId: string; razorpayOrderId: string; razorpaySignature: string }) {
-    return this.client.post('/orders/verify-payment', data);
-  }
+
 
   // Review endpoints
   submitReview(data: { name: string; rating: number; comment: string; productId?: string; email?: string }) {
-    return this.client.post('/reviews/submit', data);
+      return this.client.post('/reviews/submit', data);
   }
 
   getApprovedReviews(params?: { limit?: number; productId?: string }) {
@@ -370,23 +428,44 @@ class ApiClient {
     return this.client.post('/coupons/validate', { code, orderAmount });
   }
 
-  applyCoupon(code: string, orderId: string) {
-    return this.client.post('/coupons/apply', { code, orderId });
+  applyCoupon(code: string, orderId: string, orderAmount?: number) {
+    return this.client.post('/coupons/apply', { code, orderId, orderAmount: orderAmount ?? 0 });
   }
 
-  // Newsletter subscription – generates a unique coupon for logged-in user
+  // Admin Coupon management
+  getAdminCoupons(params?: { page?: number; limit?: number; status?: string }) {
+    return this.client.get('/coupons/admin/all', { params });
+  }
+
+  createAdminCoupon(data: {
+    code?: string;
+    discountType: 'percentage' | 'fixed';
+    discountValue: number;
+    minOrderAmount?: number;
+    maxDiscount?: number;
+    maxUses?: number;
+    expiresInDays?: number;
+  }) {
+    return this.client.post('/coupons/admin/create', data);
+  }
+
+  deleteAdminCoupon(id: string) {
+    return this.client.delete(`/coupons/admin/${id}`);
+  }
+
+  // Newsletter subscription - generates a unique coupon for logged-in user
   generateNewsletterCoupon() {
     return this.client.post('/email/subscribe', {});
   }
 
   // Recipes endpoints (Requirements: 9.2, 9.3, 16.3)
-  getRecipes(params?: { tag?: string; region?: string; page?: number }) {
+  getRecipes(params?: { tag?: string; region?: string; page?: number; limit?: number }) {
     return this.client.get('/admin/recipes', { params });
   }
 
   // Seasonal Banners endpoints (Requirements: 9.4, 9.5, 17.1)
-  getSeasonalBanners() {
-    return this.client.get('/admin/banners');
+  getSeasonalBanners(activeOnly = true) {
+    return this.client.get('/admin/banners', { params: activeOnly ? { activeOnly: 'true' } : {} });
   }
 
   getBaseUrl() {
@@ -411,13 +490,97 @@ class ApiClient {
     return this.client.post('/loyalty/redeem', data);
   }
 
-  // Referral endpoints (Requirement 11.5)
+  // Wishlist endpoints
+  getWishlist() {
+    return this.client.get('/wishlist');
+  }
+
+  addToWishlist(productId: string) {
+    return this.client.post(`/wishlist/${productId}`);
+  }
+
+  removeFromWishlist(productId: string) {
+    return this.client.delete(`/wishlist/${productId}`);
+  }
+
+  // Loyalty transaction history
+  getLoyaltyTransactions(params?: { page?: number; limit?: number }) {
+    return this.client.get('/loyalty/transactions', { params });
+  }
+
+  // Address: set default
+  setDefaultAddress(id: string) {
+    return this.client.post(`/addresses/${id}/set-default`, {});
+  }
+
+  // Referral endpoints (Bug 5 fix — canonical typed methods targeting /referral/* singular)
   getReferralCode() {
     return this.client.get('/referral/my-code');
   }
 
+  applyReferralCode(code: string) {
+    return this.client.post('/referral/apply', { code });
+  }
+
   getReferralHistory() {
     return this.client.get('/referral/history');
+  }
+
+  // Admin Product Management Endpoints
+  adminListProducts(params?: any) {
+    return this.client.get('/admin/products', { params });
+  }
+
+  adminGetProduct(id: string) {
+    return this.client.get(`/admin/products/${id}`);
+  }
+
+  adminCreateProduct(data: any) {
+    return this.client.post('/admin/products', data);
+  }
+
+  adminUpdateProduct(id: string, data: any) {
+    return this.client.put(`/admin/products/${id}`, data);
+  }
+
+  adminDeleteProduct(id: string) {
+    return this.client.delete(`/admin/products/${id}`);
+  }
+
+  adminUpdateProductStatus(id: string, status: string) {
+    return this.client.patch(`/admin/products/${id}/status`, { status });
+  }
+
+  adminDuplicateProduct(id: string) {
+    return this.client.post(`/admin/products/${id}/duplicate`);
+  }
+
+  adminGetInventory(id: string) {
+    return this.client.get(`/admin/products/${id}/inventory`);
+  }
+
+  adminAdjustVariantStock(id: string, variantId: string, data: { quantity: number; reason: string; note?: string }) {
+    return this.client.put(`/admin/products/${id}/variants/${variantId}/stock`, data);
+  }
+
+  adminGetInventoryHistory(id: string, params?: any) {
+    return this.client.get(`/admin/products/${id}/inventory/history`, { params });
+  }
+
+  adminBulkOperation(data: { productIds: string[]; action: string; payload?: any }) {
+    return this.client.post('/admin/products/bulk', data);
+  }
+
+  adminExportProducts() {
+    return this.client.get('/admin/products/export', { responseType: 'blob' });
+  }
+
+  adminImportProducts(data: any) {
+    return this.client.post('/admin/products/import', data);
+  }
+
+  adminSearchPicker(q: string) {
+    return this.client.get('/admin/products/search-picker', { params: { q } });
   }
 
   // Generic methods

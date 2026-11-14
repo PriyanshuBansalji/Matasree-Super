@@ -111,6 +111,28 @@ const userSchema = new mongoose_1.Schema({
         ],
         default: [],
     },
+    failedLoginAttempts: {
+        type: Number,
+        required: true,
+        default: 0,
+    },
+    lockUntil: {
+        type: Date,
+    },
+    lastLoginAt: {
+        type: Date,
+    },
+    lastLoginIp: {
+        type: String,
+    },
+    loginHistory: [
+        {
+            ip: String,
+            userAgent: String,
+            timestamp: { type: Date, default: Date.now },
+            success: Boolean,
+        }
+    ],
 }, { timestamps: true });
 // Indexes for performance
 userSchema.index({ provider: 1, providerId: 1 });

@@ -34,7 +34,7 @@ interface SearchBarProps {
 function resolveImageUrl(path: string | null | undefined): string {
   if (!path) return '';
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  const base = 'http://localhost:5001';
+  const base = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
   return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 

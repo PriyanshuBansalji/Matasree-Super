@@ -1,11 +1,37 @@
+import { useEffect } from 'react';
 import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
 import { Link } from 'react-router-dom';
 import { WhatsAppCartButton } from '@/components/WhatsAppButton';
+import { apiClient } from '@/services/api';
 
 const CartDrawer = () => {
   const { items, isOpen, setCartOpen, updateQuantity, removeItem, totalPrice } = useCartStore();
+
+  // Lock background scroll (including Lenis smooth scroll) when cart is open
+  useEffect(() => {
+    const lenis = (window as any).__lenis;
+
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      if (lenis) lenis.stop();
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      document.body.style.touchAction = '';
+      if (lenis) lenis.start();
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      document.body.style.touchAction = '';
+      if (lenis) lenis.start();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -89,9 +115,20 @@ const CartDrawer = () => {
               >
                 <div className="relative">
                   <img
-                    src={item.image}
+                    src={
+                      !item.image
+                        ? 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=600'
+                        : item.image.startsWith('http') || item.image.startsWith('data:') || item.image.startsWith('blob:')
+                        ? item.image
+                        : item.image.startsWith('/')
+                        ? `${apiClient.getBaseUrl()}${item.image}`
+                        : item.image
+                    }
                     alt={item.name}
                     className="w-24 h-24 object-cover rounded-xl"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=600';
+                    }}
                   />
                   <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-md">
                     {item.quantity}
@@ -99,7 +136,11 @@ const CartDrawer = () => {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-foreground line-clamp-1 mb-1">{item.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-3">{item.weight}</p>
+                  {item.weight ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-2">{item.weight}</span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium mb-2">No weight</span>
+                  )}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
                       <Button
@@ -168,7 +209,7 @@ const CartDrawer = () => {
             </Button>
             <WhatsAppCartButton
               cartItems={items.map((item) => ({
-                name: item.name,
+                name: item.weight ? `${item.name} (${item.weight})` : item.name,
                 qty: item.quantity,
                 price: item.price,
               }))}

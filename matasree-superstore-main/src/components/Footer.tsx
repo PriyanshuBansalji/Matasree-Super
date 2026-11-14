@@ -95,6 +95,8 @@ const Footer = () => {
                 { name: 'About Us', path: '/about' },
                 { name: 'Products', path: '/products' },
                 { name: 'Categories', path: '/categories' },
+                { name: 'Recipes', path: '/recipes' },
+                { name: 'Spice Guide', path: '/spice-guide' },
                 { name: 'Become a Partner', path: '/partnership' },
                 { name: 'Contact', path: '/contact' },
               ].map((link) => (
@@ -147,19 +149,23 @@ const Footer = () => {
                 <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 group-hover:bg-gradient-spice transition-all shadow-md mt-1">
                   <MapPin className="w-4 h-4 group-hover:text-white" />
                 </div>
-                <span className="font-medium leading-relaxed">Clement Town, Dehradun - Uttarakhand, India</span>
+                <span className="font-medium leading-relaxed">C-20, Gokul Enclave, Clement Town, Turner Road, Dehradun-248002, Uttarakhand, India</span>
               </li>
               <li className="flex items-center gap-3 text-sm text-background/75 group">
                 <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 group-hover:bg-gradient-spice transition-all shadow-md">
                   <Phone className="w-4 h-4 group-hover:text-white" />
                 </div>
-                <a href="tel:7505675163" className="font-bold hover:text-primary transition-all">+91 7505675163</a>
+                <a href="tel:+916397415400" className="font-bold hover:text-primary transition-all">+91 6397415400</a>
               </li>
               <li className="flex items-center gap-3 text-sm text-background/75 group">
                 <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 group-hover:bg-gradient-spice transition-all shadow-md">
                   <Mail className="w-4 h-4 group-hover:text-white" />
                 </div>
-                <a href="mailto:matasreesuper@gmail.com" className="font-bold hover:text-primary transition-all">Email Us</a>
+                <a href="mailto:admin@matasreesuper.com" className="font-bold hover:text-primary transition-all">admin@matasreesuper.com</a>
+              </li>
+              <li className="pt-2 text-xs text-amber-400 font-bold tracking-widest uppercase flex items-center gap-2">
+                <span>🛡️ FSSAI Lic. No:</span>
+                <span className="text-white">22626030001734</span>
               </li>
             </ul>
           </div>

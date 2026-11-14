@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import { encrypt, decrypt } from '../utils/encryption';
 
 export interface IPartnership {
   _id: mongoose.Types.ObjectId;
@@ -83,12 +84,16 @@ const partnershipSchema = new Schema<IPartnership>(
       type: String,
       required: [true, 'Bank account number is required'],
       trim: true,
+      get: decrypt,
+      set: encrypt,
     },
     ifscCode: {
       type: String,
       required: [true, 'IFSC code is required'],
       trim: true,
       uppercase: true,
+      get: decrypt,
+      set: encrypt,
     },
     gstNumber: {
       type: String,
@@ -139,7 +144,11 @@ const partnershipSchema = new Schema<IPartnership>(
       trim: true,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true }
+  }
 );
 
 // Index for faster queries

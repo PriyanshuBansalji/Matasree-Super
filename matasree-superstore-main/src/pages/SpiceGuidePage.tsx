@@ -15,6 +15,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import PageHelmet from '@/components/PageHelmet';
 import CartDrawer from '@/components/CartDrawer';
+import { Button } from '@/components/ui/button';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -35,6 +36,8 @@ interface Spice {
 
 // ── Spice Data ───────────────────────────────────────────────
 
+// ── Spice Data with Original Local Photos ───────────────────
+
 const SPICES: Spice[] = [
   {
     id: 'turmeric',
@@ -43,8 +46,8 @@ const SPICES: Spice[] = [
     flavorProfiles: ['earthy', 'bitter'],
     culinaryUses: ['curries', 'rice dishes', 'marinades'],
     description:
-      'The golden spice of India, turmeric imparts a warm, earthy flavor and vibrant yellow hue. Used in virtually every Indian kitchen, it has powerful anti-inflammatory properties and is central to curries, dals, and rice dishes.',
-    image: 'https://images.unsplash.com/photo-1615485500704-8e990f9900f7?w=600&q=80',
+      'The golden spice of India, turmeric imparts a warm, earthy flavor and vibrant yellow hue. Cold-ground from high-curcumin roots to preserve natural essential oils.',
+    image: '/Whole Spice/—Pngtree—bowl of turmeric powder with_16791150.png',
     productTags: ['turmeric', 'haldi', 'golden spice'],
   },
   {
@@ -54,20 +57,9 @@ const SPICES: Spice[] = [
     flavorProfiles: ['earthy', 'aromatic'],
     culinaryUses: ['curries', 'rice dishes', 'tempering'],
     description:
-      'Cumin seeds are the backbone of North Indian cooking. Their warm, nutty, slightly peppery flavor forms the base of countless spice blends and tadkas. Whole seeds are tempered in hot oil to release their essential oils.',
-    image: 'https://images.unsplash.com/photo-1612204103590-b8ec9b4f4e7e?w=600&q=80',
+      'Cumin seeds are the backbone of North Indian cooking. Their warm, nutty, slightly peppery flavor forms the base of countless spice blends and tadkas.',
+    image: '/Whole Spice/vecteezy_ai-generated-dried-cumin-seeds-in-wooden-spoon-png_41167200.png',
     productTags: ['cumin', 'jeera', 'cumin seeds'],
-  },
-  {
-    id: 'mustard-seeds',
-    name: 'Mustard Seeds (Sarson)',
-    region: 'South Indian',
-    flavorProfiles: ['pungent', 'earthy'],
-    culinaryUses: ['tempering', 'pickling', 'curries'],
-    description:
-      'A cornerstone of South Indian and Bengali cooking, mustard seeds are popped in hot oil to unlock a nutty, pungent aroma. They feature prominently in fish curries, sambar, chutneys, and traditional pickles.',
-    image: 'https://images.unsplash.com/photo-1609501676725-7186f017a4b0?w=600&q=80',
-    productTags: ['mustard seeds', 'sarson', 'rai'],
   },
   {
     id: 'black-pepper',
@@ -76,8 +68,8 @@ const SPICES: Spice[] = [
     flavorProfiles: ['spicy', 'aromatic', 'pungent'],
     culinaryUses: ['curries', 'marinades', 'tempering'],
     description:
-      'Known as the "King of Spices," black pepper from Kerala\'s misty hills delivers sharp heat and complex aroma. Essential in garam masala, Chettinad cuisine, and rubs for tandoori meats.',
-    image: 'https://images.unsplash.com/photo-1598511726623-d2e9996e7cb5?w=600&q=80',
+      'Known as the "King of Spices," black pepper delivers sharp heat and complex aroma. Essential in royal garam masala, Chettinad cuisine, and curry marinades.',
+    image: '/Whole Spice/vecteezy_ai-generated-black-pepper-png-isolated-on-transparent_37280071.png',
     productTags: ['black pepper', 'kali mirch', 'pepper'],
   },
   {
@@ -87,8 +79,8 @@ const SPICES: Spice[] = [
     flavorProfiles: ['aromatic', 'sweet'],
     culinaryUses: ['rice dishes', 'desserts', 'curries'],
     description:
-      'The "Queen of Spices," green cardamom lends a unique floral sweetness to biryanis, kheer, and chai. Its cool, minty notes make it indispensable in Mughal-inspired cuisine and Indian sweets.',
-    image: 'https://images.unsplash.com/photo-1599909144696-3b8e55d9eba0?w=600&q=80',
+      'The "Queen of Spices," green cardamom lends a unique floral sweetness to biryanis, kheer, and chai. Cool, minty notes make it indispensable in Mughlai cuisine.',
+    image: '/Whole Spice/vecteezy_fresh-cardamom-pods-in-a-wooden-bowl_55395910.png',
     productTags: ['cardamom', 'elaichi', 'green cardamom'],
   },
   {
@@ -98,20 +90,9 @@ const SPICES: Spice[] = [
     flavorProfiles: ['aromatic', 'earthy'],
     culinaryUses: ['curries', 'marinades', 'bread & rotis'],
     description:
-      'Coriander seeds and powder provide a citrusy, mildly sweet base note to curries, chutneys, and spice blends. Ground dhaniya is among the highest-used spices in Indian home cooking.',
-    image: 'https://images.unsplash.com/photo-1561155707-57a80c9e1975?w=600&q=80',
+      'Coriander seeds and powder provide a citrusy, mildly sweet base note to curries, chutneys, and spice blends. Ground dhaniya is among the highest-used spices.',
+    image: '/Whole Spice/vecteezy_coriander-seeds-displayed-in-a-wooden-bowl-on-a-transparent_57176801.png',
     productTags: ['coriander', 'dhaniya', 'coriander powder'],
-  },
-  {
-    id: 'fenugreek',
-    name: 'Fenugreek (Methi)',
-    region: 'Rajasthani',
-    flavorProfiles: ['bitter', 'earthy'],
-    culinaryUses: ['curries', 'bread & rotis', 'pickling'],
-    description:
-      'Fenugreek seeds and leaves contribute a distinctive bittersweet, maple-like undertone to Rajasthani curries, methi parathas, and achaar. A staple in dal and lamb dishes of the desert kitchens.',
-    image: 'https://images.unsplash.com/photo-1571753088049-56714ded5b7a?w=600&q=80',
-    productTags: ['fenugreek', 'methi', 'methi seeds'],
   },
   {
     id: 'cloves',
@@ -120,53 +101,9 @@ const SPICES: Spice[] = [
     flavorProfiles: ['aromatic', 'spicy', 'sweet'],
     culinaryUses: ['rice dishes', 'curries', 'tempering'],
     description:
-      'Intensely aromatic cloves are a key whole spice in biryanis and pulao. Their warm, sweet-pungent flavor is fundamental to garam masala and slow-cooked Mughlai gravies.',
-    image: 'https://images.unsplash.com/photo-1534939561126-855b8675edd7?w=600&q=80',
+      'Intensely aromatic cloves are a key whole spice in biryanis and pulao. Their warm, sweet-pungent flavor is fundamental to royal garam masala.',
+    image: '/Whole Spice/vecteezy_ai-generated-dried-cloves-in-the-wooden-spoon-isolated-on_37924336.png',
     productTags: ['cloves', 'laung', 'whole cloves'],
-  },
-  {
-    id: 'red-chili',
-    name: 'Red Chili (Lal Mirch)',
-    region: 'Rajasthani',
-    flavorProfiles: ['spicy'],
-    culinaryUses: ['curries', 'marinades', 'tempering'],
-    description:
-      'The fiery soul of Indian cuisine. Rajasthani lal mirch is celebrated for its vibrant crimson color and intense heat. Used in everything from laal maas to everyday tadkas and marinades.',
-    image: 'https://images.unsplash.com/photo-1599020792689-8c53e5ff9571?w=600&q=80',
-    productTags: ['red chili', 'lal mirch', 'chili powder', 'red chili powder'],
-  },
-  {
-    id: 'amchur',
-    name: 'Dry Mango Powder (Amchur)',
-    region: 'North Indian',
-    flavorProfiles: ['tangy', 'sweet'],
-    culinaryUses: ['curries', 'marinades', 'bread & rotis'],
-    description:
-      'Made from sun-dried raw mangoes, amchur adds a fruity tanginess and gentle sourness to chaat, aloo sabzi, and tikkas. It brightens flavors without adding moisture.',
-    image: 'https://images.unsplash.com/photo-1606923829579-0cb981a83e2e?w=600&q=80',
-    productTags: ['amchur', 'dry mango powder', 'mango powder'],
-  },
-  {
-    id: 'panch-phoron',
-    name: 'Panch Phoron',
-    region: 'Bengali',
-    flavorProfiles: ['aromatic', 'pungent', 'earthy'],
-    culinaryUses: ['tempering', 'curries', 'pickling'],
-    description:
-      'The iconic Bengali five-spice blend — cumin, nigella, fenugreek, fennel, and mustard seeds in equal measure. A single tempering of panch phoron in mustard oil transforms any vegetable or fish dish.',
-    image: 'https://images.unsplash.com/photo-1464699908537-0954e50791ee?w=600&q=80',
-    productTags: ['panch phoron', 'five spice', 'bengali spice blend'],
-  },
-  {
-    id: 'kasuri-methi',
-    name: 'Kasuri Methi (Dried Fenugreek Leaves)',
-    region: 'North Indian',
-    flavorProfiles: ['bitter', 'aromatic'],
-    culinaryUses: ['curries', 'bread & rotis', 'marinades'],
-    description:
-      'Sun-dried fenugreek leaves from Kasur, Pakistan. Crushed and sprinkled into butter chicken, paneer tikka masala, or parathas, they add a restaurant-quality depth that sets dishes apart.',
-    image: 'https://images.unsplash.com/photo-1536304929831-ee1ca9d44906?w=600&q=80',
-    productTags: ['kasuri methi', 'dried fenugreek leaves', 'methi leaves'],
   },
   {
     id: 'star-anise',
@@ -175,31 +112,108 @@ const SPICES: Spice[] = [
     flavorProfiles: ['aromatic', 'sweet'],
     culinaryUses: ['rice dishes', 'curries', 'tempering'],
     description:
-      'Star anise brings a distinctive liquorice-like sweetness to Bengali biryani and Mughlai curries. Its beautiful star shape is as striking visually as its flavor is in slow-braised meat dishes.',
-    image: 'https://images.unsplash.com/photo-1575217111835-e0dbf0de02b7?w=600&q=80',
+      'Star anise brings a distinctive liquorice-like sweetness to Bengali biryani and Mughlai curries. Its star shape is as striking visually as its flavor.',
+    image: '/Whole Spice/vecteezy_a-white-ceramic-bowl-filled-with-numerous-star-anise-pods_67847656.png',
     productTags: ['star anise', 'chakra phool', 'anise'],
   },
   {
-    id: 'ajwain',
-    name: 'Carom Seeds (Ajwain)',
-    region: 'Rajasthani',
-    flavorProfiles: ['pungent', 'bitter', 'aromatic'],
-    culinaryUses: ['bread & rotis', 'curries', 'tempering'],
+    id: 'garam-masala',
+    name: 'Royal Shahi Garam Masala',
+    region: 'North Indian',
+    flavorProfiles: ['aromatic', 'spicy', 'sweet'],
+    culinaryUses: ['curries', 'rice dishes', 'marinades'],
     description:
-      'Ajwain has a sharp, thyme-like aroma with a slightly bitter bite. Essential in Rajasthani mathri, ajwain parathas, and fish fry. Also renowned for its digestive properties.',
-    image: 'https://images.unsplash.com/photo-1591819897706-e1af0a8f8cb5?w=600&q=80',
-    productTags: ['ajwain', 'carom seeds', 'bishop weed'],
+      'Heritage blend of 16 whole spices including Mace & Pippali, stone-ground in Clement Town, Dehradun to preserve essential oils.',
+    image: '/transparent-products/garam-masala.png',
+    productTags: ['garam masala', 'shahi masala', 'royal blend'],
   },
   {
-    id: 'curry-leaves',
-    name: 'Curry Leaves (Kadi Patta)',
-    region: 'South Indian',
-    flavorProfiles: ['aromatic', 'earthy'],
-    culinaryUses: ['tempering', 'curries', 'rice dishes'],
+    id: 'red-chili',
+    name: 'Super Lal Tadka Red Chili',
+    region: 'Rajasthani',
+    flavorProfiles: ['spicy', 'pungent'],
+    culinaryUses: ['curries', 'marinades', 'tempering'],
     description:
-      'Fresh and dried curry leaves are the heartbeat of South Indian cooking. A handful sizzled in coconut oil releases an irreplaceable nutty, citrusy fragrance essential to sambar, rasam, and coconut chutneys.',
-    image: 'https://images.unsplash.com/photo-1574690610869-eeb6c3741c68?w=600&q=80',
-    productTags: ['curry leaves', 'kadi patta', 'meetha neem'],
+      '100% pure cold-ground fiery red chilli powder from sun-dried select whole chillies. Delivers rich crimson red color and traditional tadka heat.',
+    image: '/transparent-products/super-lal-tadka.png',
+    productTags: ['red chili', 'lal mirch', 'tadka mirch'],
+  },
+  {
+    id: 'kasuri-methi',
+    name: 'Sun-Dried Kasoori Methi',
+    region: 'North Indian',
+    flavorProfiles: ['bitter', 'aromatic'],
+    culinaryUses: ['curries', 'bread & rotis', 'marinades'],
+    description:
+      'Fragrant fenugreek leaves harvested from Himalayan foothill farms and gently sun-dried to lock in essential oils.',
+    image: '/transparent-products/kasoori-methi.png',
+    productTags: ['kasoori methi', 'fenugreek leaves', 'methi'],
+  },
+  {
+    id: 'kitchen-king',
+    name: 'Kitchen King All-Purpose Masala',
+    region: 'North Indian',
+    flavorProfiles: ['aromatic', 'earthy', 'tangy'],
+    culinaryUses: ['curries', 'tempering', 'bread & rotis'],
+    description:
+      'The supreme all-in-one seasoning blend designed to elevate everyday vegetables, lentils, and gravies with Hing & Amchur.',
+    image: '/transparent-products/kitchen-king.png',
+    productTags: ['kitchen king', 'all-purpose', 'curry seasoning'],
+  },
+  {
+    id: 'meat-masala',
+    name: 'Meat Masala Special (with Bairki & Kachri)',
+    region: 'North Indian',
+    flavorProfiles: ['spicy', 'earthy', 'tangy'],
+    culinaryUses: ['curries', 'marinades'],
+    description:
+      'Robust non-veg spice mix enriched with authentic Himalayan Bairki spice, tenderizing Kachri powder, and Rock Salt.',
+    image: '/transparent-products/meat-masala.png',
+    productTags: ['meat masala', 'non-veg', 'bairki'],
+  },
+  {
+    id: 'sampuran-masala',
+    name: 'Sampuran Masala (with Himalayan Jakhiya)',
+    region: 'North Indian',
+    flavorProfiles: ['aromatic', 'pungent', 'earthy'],
+    culinaryUses: ['curries', 'tempering'],
+    description:
+      'Our signature complete spice formulation featuring rare Himalayan Jakhiya wild mustard seeds, garlic, and onion.',
+    image: '/transparent-products/sampuran-masala.png',
+    productTags: ['sampuran', 'jakhiya', 'pahari masala'],
+  },
+  {
+    id: 'mango-achar',
+    name: 'Mango Achar Masala',
+    region: 'Rajasthani',
+    flavorProfiles: ['tangy', 'spicy', 'aromatic'],
+    culinaryUses: ['pickling', 'tempering'],
+    description:
+      'Authentic Indian grandmother recipe pickle seasoning with coarse Methi Kuti, Saunf, Kalonji, and pure mustard oil infusion.',
+    image: '/transparent-products/mango-achar-masala.png',
+    productTags: ['mango achar', 'pickle masala', 'mustard oil'],
+  },
+  {
+    id: 'mix-achar',
+    name: 'Mix Achar Masala',
+    region: 'Rajasthani',
+    flavorProfiles: ['tangy', 'pungent'],
+    culinaryUses: ['pickling', 'tempering'],
+    description:
+      'Multi-use pickle spice mix for instant and aged pickles. Ground coarse to allow spice oils to penetrate lemon and chilli pickles.',
+    image: '/transparent-products/mix-achar-masala.png',
+    productTags: ['mix achar', 'pickle spice', 'rai saunf'],
+  },
+  {
+    id: 'chaat-masala',
+    name: 'Chaat Masala Special',
+    region: 'North Indian',
+    flavorProfiles: ['tangy', 'pungent', 'salty' as FlavorProfile],
+    culinaryUses: ['marinades', 'bread & rotis', 'tempering'],
+    description:
+      'Zesty and chatpata masala crafted with dry mango powder, black salt, and roasted carom seeds.',
+    image: '/transparent-products/chaat-masala.png',
+    productTags: ['chaat masala', 'amchur', 'tangy spice'],
   },
 ];
 
@@ -239,11 +253,11 @@ const CULINARY_USES: Array<'All' | CulinaryUse> = [
 // ── Color Maps ────────────────────────────────────────────────
 
 const REGION_COLORS: Record<SpiceRegion, string> = {
-  'North Indian': 'bg-orange-100 text-orange-800 border-orange-200',
-  'South Indian': 'bg-green-100 text-green-800 border-green-200',
-  Bengali: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  Rajasthani: 'bg-red-100 text-red-800 border-red-200',
-  Other: 'bg-gray-100 text-gray-700 border-gray-200',
+  'North Indian': 'bg-amber-100/90 text-amber-900 border-amber-300',
+  'South Indian': 'bg-emerald-100/90 text-emerald-900 border-emerald-300',
+  Bengali: 'bg-yellow-100/90 text-yellow-900 border-yellow-300',
+  Rajasthani: 'bg-rose-100/90 text-rose-900 border-rose-300',
+  Other: 'bg-slate-100/90 text-slate-800 border-slate-300',
 };
 
 const FLAVOR_COLORS: Record<FlavorProfile, string> = {
@@ -269,9 +283,9 @@ const FilterPill = ({ label, active, onClick }: FilterPillProps) => (
     type="button"
     onClick={onClick}
     aria-pressed={active}
-    className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200 capitalize ${
+    className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold border transition-all duration-200 capitalize ${
       active
-        ? 'bg-gradient-to-r from-[#D63220] to-[#E65C19] text-white border-transparent shadow-md'
+        ? 'bg-gradient-to-r from-[#D63220] via-amber-600 to-[#E65C19] text-white border-transparent shadow-md scale-105'
         : 'bg-white text-[#3E2314] border-[#3E2314]/15 hover:border-[#D63220]/30 hover:bg-[#D63220]/5'
     }`}
   >
@@ -284,32 +298,32 @@ const FilterPill = ({ label, active, onClick }: FilterPillProps) => (
 interface SpiceCardProps {
   spice: Spice;
   index: number;
+  onSelect: (spice: Spice) => void;
 }
 
-const SpiceCard = ({ spice, index }: SpiceCardProps) => (
+const SpiceCard = ({ spice, index, onSelect }: SpiceCardProps) => (
   <motion.article
     initial={{ opacity: 0, y: 32 }}
     whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true, amount: 0.2 }}
-    transition={{ duration: 0.5, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
-    className="bg-[#FDFBF9] rounded-2xl border border-[#3E2314]/8 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden flex flex-col group"
-    aria-label={`Spice card for ${spice.name}`}
+    viewport={{ once: true, amount: 0.15 }}
+    transition={{ duration: 0.5, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
+    onClick={() => onSelect(spice)}
+    className="bg-white rounded-3xl border-2 border-amber-200/50 shadow-[0_10px_30px_rgba(62,35,20,0.05)] hover:shadow-[0_20px_45px_rgba(62,35,20,0.12)] transition-all duration-300 overflow-hidden flex flex-col group cursor-pointer relative"
   >
-    {/* Image */}
-    <div className="aspect-[4/3] overflow-hidden relative">
+    {/* Product Image Stage */}
+    <div className="relative aspect-[4/3] bg-gradient-to-b from-[#FAF6F0] via-[#F7EFE5] to-[#F5EBE0] overflow-hidden flex items-center justify-center p-6">
+      <div className="absolute w-40 h-40 bg-amber-500/10 rounded-full blur-2xl group-hover:scale-125 transition-transform duration-500 pointer-events-none" />
+      
       <img
         src={spice.image}
         alt={spice.name}
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+        className="max-h-full max-w-full object-contain filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.2)] group-hover:scale-110 group-hover:-rotate-2 transition-transform duration-500 ease-out z-10"
         loading="lazy"
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).src =
-            'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=600&q=80';
-        }}
       />
+
       {/* Region badge overlay */}
       <span
-        className={`absolute top-3 right-3 text-xs font-semibold px-2.5 py-1 rounded-full border backdrop-blur-sm ${REGION_COLORS[spice.region]}`}
+        className={`absolute top-3 right-3 text-[10px] sm:text-xs font-black tracking-wider uppercase px-3 py-1 rounded-full border shadow-sm backdrop-blur-md z-20 ${REGION_COLORS[spice.region]}`}
       >
         {spice.region}
       </span>
@@ -317,12 +331,12 @@ const SpiceCard = ({ spice, index }: SpiceCardProps) => (
 
     <div className="p-5 flex flex-col flex-1 gap-3">
       {/* Name */}
-      <h3 className="font-serif text-xl font-bold text-[#3E2314] leading-snug">
+      <h3 className="font-serif text-lg sm:text-xl font-black text-[#3E2314] leading-snug group-hover:text-[#D63220] transition-colors">
         {spice.name}
       </h3>
 
       {/* Description */}
-      <p className="text-[#3E2314]/65 text-sm leading-relaxed line-clamp-3">
+      <p className="text-[#3E2314]/75 text-xs sm:text-sm leading-relaxed line-clamp-2 font-medium">
         {spice.description}
       </p>
 
@@ -331,37 +345,24 @@ const SpiceCard = ({ spice, index }: SpiceCardProps) => (
         {spice.flavorProfiles.map((flavor) => (
           <span
             key={flavor}
-            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${FLAVOR_COLORS[flavor]}`}
+            className={`inline-flex items-center gap-1 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full border font-bold capitalize ${FLAVOR_COLORS[flavor]}`}
           >
-            <Flame className="w-2.5 h-2.5" aria-hidden="true" />
+            <Flame className="w-3 h-3" aria-hidden="true" />
             {flavor}
           </span>
         ))}
       </div>
 
-      {/* Culinary uses */}
-      <div className="flex flex-wrap gap-1.5" aria-label="Culinary uses">
-        {spice.culinaryUses.map((use) => (
-          <span
-            key={use}
-            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-[#3E2314]/5 text-[#3E2314]/70 border-[#3E2314]/10 font-medium capitalize"
-          >
-            <UtensilsCrossed className="w-2.5 h-2.5" aria-hidden="true" />
-            {use}
-          </span>
-        ))}
-      </div>
-
       {/* Product tag links */}
-      <div className="flex flex-wrap gap-2 pt-1 mt-auto" aria-label="Shop associated products">
+      <div className="flex flex-wrap gap-2 pt-2 mt-auto border-t border-amber-100" aria-label="Shop associated products">
         {spice.productTags.map((tag) => (
           <Link
             key={tag}
             to={`/products?tag=${encodeURIComponent(tag)}`}
-            className="inline-flex items-center gap-1 text-xs bg-[#E65C19]/10 text-[#E65C19] border border-[#E65C19]/25 px-2.5 py-1 rounded-full font-semibold hover:bg-[#E65C19]/20 hover:border-[#E65C19]/50 transition-colors duration-200"
-            aria-label={`Shop products tagged with ${tag}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-[10px] sm:text-xs bg-amber-50 text-[#D63220] border border-amber-300/80 px-2.5 py-1 rounded-full font-bold hover:bg-[#D63220] hover:text-white transition-colors"
           >
-            <Tag className="w-3 h-3" aria-hidden="true" />
+            <Tag className="w-3 h-3" />
             {tag}
           </Link>
         ))}
@@ -370,6 +371,61 @@ const SpiceCard = ({ spice, index }: SpiceCardProps) => (
   </motion.article>
 );
 
+// ── Interactive Detail Modal ───────────────────────────────────
+
+function SpiceDetailModal({ spice, onClose }: { spice: Spice | null; onClose: () => void }) {
+  if (!spice) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div className="relative w-full max-w-2xl bg-white rounded-3xl border-2 border-amber-300 p-6 sm:p-8 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full bg-amber-100 text-amber-900 hover:bg-red-100 hover:text-red-700 transition">
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="grid sm:grid-cols-12 gap-6 items-center">
+          <div className="sm:col-span-5 bg-gradient-to-b from-[#FAF6F0] to-[#F5EBE0] p-6 rounded-2xl border border-amber-200 flex items-center justify-center min-h-[220px]">
+            <img src={spice.image} alt={spice.name} className="max-h-48 max-w-full object-contain filter drop-shadow-[0_16px_30px_rgba(0,0,0,0.25)]" />
+          </div>
+
+          <div className="sm:col-span-7 space-y-4">
+            <span className="text-[10px] font-black text-amber-800 tracking-widest uppercase bg-amber-100 border border-amber-300 px-3 py-1 rounded-full">
+              {spice.region} Origin
+            </span>
+
+            <h3 className="font-serif text-2xl sm:text-3xl font-black text-[#3E2314]">
+              {spice.name}
+            </h3>
+
+            <p className="text-slate-700 text-xs sm:text-sm leading-relaxed font-medium">
+              {spice.description}
+            </p>
+
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Recommended Culinary Uses</span>
+              <div className="flex flex-wrap gap-1.5">
+                {spice.culinaryUses.map((use) => (
+                  <span key={use} className="px-3 py-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-full text-xs font-bold capitalize">
+                    {use}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-3">
+              <Button asChild size="lg" className="w-full bg-gradient-to-r from-amber-600 via-orange-600 to-[#D63220] text-white font-serif font-black py-4 rounded-xl shadow-lg">
+                <Link to={`/products?tag=${encodeURIComponent(spice.productTags[0] || '')}`}>
+                  Shop Authentic {spice.name.split(' ')[0]} Products
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────
 
 const SpiceGuidePage = () => {
@@ -377,6 +433,7 @@ const SpiceGuidePage = () => {
   const [selectedFlavor, setSelectedFlavor] = useState<'All' | FlavorProfile>('All');
   const [selectedUse, setSelectedUse] = useState<'All' | CulinaryUse>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeModalSpice, setActiveModalSpice] = useState<Spice | null>(null);
 
   const filteredSpices = useMemo(() => {
     return SPICES.filter((spice) => {
@@ -410,7 +467,7 @@ const SpiceGuidePage = () => {
   };
 
   return (
-    <div className="bg-brand-cream min-h-screen text-brand-cinnamon font-sans">
+    <div className="bg-[#FAF5EE] min-h-screen text-[#3E2314] font-sans">
       <PageHelmet
         title="Spice Guide | Matasree Super Masale"
         description="Explore our interactive spice guide — learn about Indian spices by region, flavour profile, and culinary use with Matasree Super Masale."
@@ -421,39 +478,39 @@ const SpiceGuidePage = () => {
 
       <main role="main" className="pt-24 pb-24">
         {/* ── Hero Header ── */}
-        <section className="container mx-auto px-4 max-w-6xl mb-14">
+        <section className="container mx-auto px-4 max-w-6xl mb-12">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
             className="text-center"
           >
-            <div className="inline-flex items-center gap-2 bg-[#D63220]/10 text-[#D63220] px-4 py-1.5 rounded-full text-sm font-bold mb-6">
+            <div className="inline-flex items-center gap-2 bg-[#D63220]/10 border border-[#D63220]/20 text-[#D63220] px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-4 shadow-sm">
               <Leaf className="w-4 h-4" aria-hidden="true" />
-              Spice Encyclopedia
+              OFFICIAL SPICE ENCYCLOPEDIA
             </div>
-            <h1 className="font-serif text-5xl md:text-7xl font-black text-[#3E2314] mb-4 tracking-tight leading-tight">
-              The{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D63220] via-[#E65C19] to-[#8B4513] italic">
+            <h1 className="font-serif text-4xl sm:text-6xl lg:text-7xl font-black text-[#3E2314] mb-4 tracking-tight leading-tight">
+              The Master{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D63220] via-[#E65C19] to-[#C89B3C] italic">
                 Spice Guide
               </span>
             </h1>
-            <p className="text-lg text-[#3E2314]/60 max-w-2xl mx-auto">
+            <p className="text-sm sm:text-base text-[#3E2314]/75 max-w-2xl mx-auto font-semibold leading-relaxed">
               Explore India's rich spice heritage — browse by region, flavor profile, and culinary
-              use, then shop the spices you love directly.
+              use, then shop 100% stone-ground spices directly from Clement Town, Dehradun.
             </p>
 
             {/* Quick stats */}
-            <div className="flex flex-wrap items-center justify-center gap-6 mt-8">
+            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 mt-8">
               {[
-                { icon: Leaf, value: `${SPICES.length} Spices`, label: 'in our guide' },
+                { icon: Leaf, value: `${SPICES.length} Spices`, label: 'catalogued' },
                 { icon: MapPin, value: '4 Regions', label: 'of India' },
-                { icon: Flame, value: '7 Flavor Profiles', label: 'catalogued' },
+                { icon: Flame, value: '7 Flavor Profiles', label: 'identified' },
               ].map(({ icon: Icon, value, label }) => (
-                <div key={value} className="flex items-center gap-2 text-[#3E2314]/70">
+                <div key={value} className="flex items-center gap-2 bg-white/80 border border-amber-200/80 px-4 py-2 rounded-2xl shadow-sm">
                   <Icon className="w-4 h-4 text-[#D63220]" aria-hidden="true" />
-                  <span className="font-bold text-[#3E2314]">{value}</span>
-                  <span className="text-sm">{label}</span>
+                  <span className="font-bold text-[#3E2314] text-xs sm:text-sm">{value}</span>
+                  <span className="text-xs text-slate-500">{label}</span>
                 </div>
               ))}
             </div>
@@ -462,32 +519,32 @@ const SpiceGuidePage = () => {
 
         {/* ── Filters ── */}
         <section
-          className="container mx-auto px-4 max-w-6xl mb-12"
+          className="container mx-auto px-4 max-w-6xl mb-10"
           aria-label="Spice filters"
         >
-          <div className="bg-white rounded-2xl border border-[#3E2314]/8 shadow-sm p-6 space-y-5">
+          <div className="bg-white rounded-3xl border-2 border-amber-200/60 shadow-lg p-5 sm:p-8 space-y-6">
             {/* Search */}
-            <div className="relative max-w-sm">
+            <div className="relative max-w-md mx-auto">
               <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#3E2314]/40"
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#3E2314]/40"
                 aria-hidden="true"
               />
               <input
                 type="search"
-                placeholder="Search spices, tags..."
+                placeholder="Search spices by name, tag, or usage..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 aria-label="Search spices"
-                className="w-full pl-9 pr-4 py-2.5 rounded-full border border-[#3E2314]/15 bg-[#FDFBF9] text-sm text-[#3E2314] placeholder:text-[#3E2314]/40 focus:outline-none focus:border-[#D63220]/40 focus:ring-2 focus:ring-[#D63220]/10 transition"
+                className="w-full pl-11 pr-4 py-3 rounded-full border border-amber-300 bg-[#FAF6F0] text-xs sm:text-sm text-[#3E2314] font-semibold placeholder:text-[#3E2314]/40 focus:outline-none focus:border-[#D63220] focus:ring-2 focus:ring-[#D63220]/20 transition shadow-inner"
               />
             </div>
 
             {/* Region filter */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-2.5">
                 <MapPin className="w-4 h-4 text-[#D63220]" aria-hidden="true" />
-                <span className="text-sm font-bold text-[#3E2314] uppercase tracking-wide">
-                  Region
+                <span className="text-xs font-black text-[#3E2314] uppercase tracking-wider">
+                  Region of Origin
                 </span>
               </div>
               <div
@@ -508,9 +565,9 @@ const SpiceGuidePage = () => {
 
             {/* Flavor profile filter */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-2.5">
                 <Flame className="w-4 h-4 text-[#D63220]" aria-hidden="true" />
-                <span className="text-sm font-bold text-[#3E2314] uppercase tracking-wide">
+                <span className="text-xs font-black text-[#3E2314] uppercase tracking-wider">
                   Flavor Profile
                 </span>
               </div>
@@ -534,10 +591,10 @@ const SpiceGuidePage = () => {
 
             {/* Culinary use filter */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-2.5">
                 <UtensilsCrossed className="w-4 h-4 text-[#D63220]" aria-hidden="true" />
-                <span className="text-sm font-bold text-[#3E2314] uppercase tracking-wide">
-                  Culinary Use
+                <span className="text-xs font-black text-[#3E2314] uppercase tracking-wider">
+                  Culinary Application
                 </span>
               </div>
               <div
@@ -564,15 +621,16 @@ const SpiceGuidePage = () => {
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
+                  className="pt-2 border-t border-amber-100"
                 >
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="inline-flex items-center gap-1.5 text-sm text-[#D63220] font-semibold hover:underline"
+                    className="inline-flex items-center gap-1.5 text-xs text-[#D63220] font-black hover:underline"
                     aria-label="Clear all filters"
                   >
                     <X className="w-3.5 h-3.5" aria-hidden="true" />
-                    Clear all filters
+                    Reset All Filters
                   </button>
                 </motion.div>
               )}
@@ -582,16 +640,12 @@ const SpiceGuidePage = () => {
 
         {/* ── Results summary ── */}
         <div
-          className="container mx-auto px-4 max-w-6xl mb-6"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
+          className="container mx-auto px-4 max-w-6xl mb-6 flex items-center justify-between"
         >
-          <p className="text-sm text-[#3E2314]/50 font-medium">
+          <p className="text-xs sm:text-sm text-[#3E2314]/60 font-bold">
             Showing{' '}
-            <span className="text-[#3E2314] font-bold">{filteredSpices.length}</span>{' '}
-            {filteredSpices.length === 1 ? 'spice' : 'spices'}
-            {hasActiveFilters && ' matching your filters'}
+            <span className="text-[#D63220] font-black">{filteredSpices.length}</span>{' '}
+            {filteredSpices.length === 1 ? 'Spice' : 'Spices'} in Encyclopedia
           </p>
         </div>
 
@@ -604,20 +658,20 @@ const SpiceGuidePage = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-center py-24 text-[#3E2314]/50"
+                className="text-center py-20 text-[#3E2314]/50 bg-white rounded-3xl border border-amber-200"
                 role="alert"
               >
-                <Leaf className="w-16 h-16 mx-auto mb-4 opacity-25" aria-hidden="true" />
-                <p className="text-lg font-semibold text-[#3E2314]/70">
-                  No spices found for the selected filters.
+                <Leaf className="w-16 h-16 mx-auto mb-4 text-amber-600/40" aria-hidden="true" />
+                <p className="text-lg font-bold text-[#3E2314]">
+                  No spices matched your selected criteria.
                 </p>
-                <p className="text-sm mt-1">Try adjusting or clearing your filters.</p>
+                <p className="text-xs text-slate-500 mt-1 font-semibold">Try clearing search keywords or region filters.</p>
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="mt-6 px-6 py-2.5 rounded-full bg-gradient-to-r from-[#D63220] to-[#E65C19] text-white text-sm font-semibold shadow hover:opacity-90 transition-opacity"
+                  className="mt-5 px-6 py-2.5 rounded-full bg-gradient-to-r from-[#D63220] to-[#E65C19] text-white text-xs font-black shadow hover:scale-105 transition-transform"
                 >
-                  Clear Filters
+                  Reset Search
                 </button>
               </motion.div>
             ) : (
@@ -630,13 +684,16 @@ const SpiceGuidePage = () => {
                 className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6"
               >
                 {filteredSpices.map((spice, idx) => (
-                  <SpiceCard key={spice.id} spice={spice} index={idx} />
+                  <SpiceCard key={spice.id} spice={spice} index={idx} onSelect={(s) => setActiveModalSpice(s)} />
                 ))}
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Interactive Detail Modal */}
+      <SpiceDetailModal spice={activeModalSpice} onClose={() => setActiveModalSpice(null)} />
 
       <Footer />
       <CartDrawer />

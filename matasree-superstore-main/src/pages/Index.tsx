@@ -21,22 +21,27 @@ import CartDrawer from '@/components/CartDrawer';
 import { SmoothScroll } from '@/components/home/SmoothScroll';
 import RecentlyViewedSection from '@/components/RecentlyViewedSection';
 import SeasonalBannerSlot from '@/components/SeasonalBannerSlot';
+import { SpiceCursorTrail } from '@/components/SpiceCursorTrail';
+import { SpiceUniverseHero } from '@/components/home/SpiceUniverseHero';
+import { SpiceJourneyScroll } from '@/components/home/SpiceJourneyScroll';
+import { SpiceIngredientExplorer } from '@/components/home/SpiceIngredientExplorer';
 
 // ── Primary sections (spec-mandated order) ──────────────────────────────────
 import { HeroParallax } from '@/components/home/HeroParallax';
 import FeaturedCategoriesSection from '@/components/home/FeaturedCategoriesSection';
 import { ProductScrollGrid } from '@/components/home/ProductScrollGrid';
 import TestimonialsSection from '@/components/TestimonialsSection';
-import NewsletterSection from '@/components/NewsletterSection';
 
 // ── Secondary brand/content sections (after newsletter) ─────────────────────
 import FeaturesSection from '@/components/FeaturesSection';
 import { BrandStoryScroll } from '@/components/home/BrandStoryScroll';
 import WhyChooseUsSection from '@/components/WhyChooseUsSection';
 import OurProcess from '@/components/OurProcess';
+import { OfficialPackagingShowcase } from '@/components/home/OfficialPackagingShowcase';
+import InteractiveSpiceShowcase from '@/components/home/InteractiveSpiceShowcase';
 import { TrustStatsSection } from '@/components/home/TrustStatsSection';
-import FAQSection from '@/components/FAQSection';
 import { PremiumCTA } from '@/components/home/PremiumCTA';
+import FAQSection from '@/components/FAQSection';
 import PageHelmet from '@/components/PageHelmet';
 import JsonLd, { buildOrganizationSchema } from '@/components/JsonLd';
 
@@ -52,6 +57,8 @@ const Index = () => {
   return (
     <SmoothScroll>
       <div className="bg-brand-cream text-brand-cinnamon font-sans min-h-screen selection:bg-brand-chili selection:text-white">
+        {/* Spice emoji cursor trail — desktop only */}
+        <SpiceCursorTrail />
         <PageHelmet
           title="Matasree Super Masale — Premium Indian Spices"
           description="Discover Matasree Super Masale — authentic premium Indian spices sourced from the finest farms. Shop chilli powder, turmeric, garam masala, and more."
@@ -67,13 +74,19 @@ const Index = () => {
           {/* HeroParallax has its own internal animations — no double-wrap */}
           <HeroParallax />
 
-          {/* ━━━━ 2. FEATURED CATEGORIES ━━━━ */}
+          {/* ━━━━ 1.5. INTERACTIVE 3D TRANSPARENT SPICE SHOWCASE ━━━━ */}
+          <InteractiveSpiceShowcase />
+
+          {/* ━━━━ 2. FEATURED CATEGORIES ("EXPLORE OUR COLLECTIONS") ━━━━ */}
           {/* FeaturedCategoriesSection applies whileInView internally */}
           <FeaturedCategoriesSection />
 
-          {/* ━━━━ 3. BESTSELLER PRODUCTS ━━━━ */}
+          {/* ━━━━ 3. BESTSELLER PRODUCTS (DIRECTLY BELOW EXPLORE OUR COLLECTIONS) ━━━━ */}
           {/* ProductScrollGrid has its own internal scroll animations — no double-wrap */}
           <ProductScrollGrid />
+
+          {/* ━━━━ 3.5. OFFICIAL PACKAGING SHOWCASE ━━━━ */}
+          <OfficialPackagingShowcase />
 
           {/* ━━━━ 4. RECENTLY VIEWED ━━━━ */}
           {/* Shows only when items exist in local storage */}
@@ -89,11 +102,17 @@ const Index = () => {
           {/* TestimonialsSection has its own internal animations — no double-wrap */}
           <TestimonialsSection />
 
-          {/* ━━━━ 7. NEWSLETTER ━━━━ */}
-          {/* NewsletterSection has its own internal motion — add outer scroll reveal */}
-          <motion.div {...scrollReveal}>
-            <NewsletterSection />
-          </motion.div>
+          {/* ━━━━ 6.5. SPICE UNIVERSE FLOATING HERO ━━━━ */}
+          {/* Real spice images floating in 3D space, mouse-reactive */}
+          <SpiceUniverseHero />
+
+          {/* ━━━━ 6.6. SCROLL BRAND JOURNEY ━━━━ */}
+          {/* Raw -> Grind -> Pack -> Kitchen transformation on scroll */}
+          {/* <SpiceJourneyScroll /> */}
+
+          {/* ━━━━ 6.7. INGREDIENT EXPLORER ━━━━ */}
+          {/* Click each ingredient to see benefits */}
+          {/* <SpiceIngredientExplorer /> */}
 
           {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
           {/* SECONDARY SECTIONS — brand storytelling, come after primary flow */}

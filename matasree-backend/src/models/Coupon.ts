@@ -7,7 +7,7 @@ export interface ICoupon {
     discountValue: number;
     minOrderAmount: number;
     maxDiscount: number;
-    email: string;
+    email?: string;
     userId?: mongoose.Types.ObjectId;
     isUsed: boolean;
     usedAt?: Date;
@@ -51,7 +51,8 @@ const couponSchema = new Schema<ICoupon>(
         },
         email: {
             type: String,
-            required: true,
+            required: false,
+            default: '',
             trim: true,
             lowercase: true,
         },

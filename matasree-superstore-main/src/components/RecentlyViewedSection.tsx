@@ -25,7 +25,7 @@ interface RecentlyViewedSectionProps {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'matasree-recently-viewed';
-const BACKEND_URL = 'http://localhost:5001';
+const BACKEND_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
 
 const getImageUrl = (path: string | null | undefined): string => {
   if (!path) return 'https://via.placeholder.com/200';
@@ -57,12 +57,14 @@ const RecentlyViewedSection = ({ currentProductId }: RecentlyViewedSectionProps)
       try {
         const res = await apiClient.getRecentlyViewed();
         if (cancelled) return;
-        // API returns { data: { data: [...] } } or { data: [...] }
+        // API returns { data: [{ product: ProductData, viewedAt }] } or { data: { data: [...] } }
         const raw: any = res;
-        const arr: any[] = raw?.data?.data ?? raw?.data ?? [];
-        const filtered = Array.isArray(arr)
-          ? arr.filter((p: any) => p._id !== currentProductId).slice(0, 10)
+        const rawArr: any[] = raw?.data?.data ?? raw?.data ?? [];
+        // Backend returns [{ product: ProductData, viewedAt }] — extract .product
+        const arr: any[] = Array.isArray(rawArr)
+          ? rawArr.map((item: any) => item.product ?? item).filter(Boolean)
           : [];
+        const filtered = arr.filter((p: any) => p._id !== currentProductId).slice(0, 10);
         setProducts(filtered);
       } catch {
         // silently ignore

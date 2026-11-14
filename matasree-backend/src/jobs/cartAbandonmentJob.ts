@@ -162,9 +162,13 @@ export const runCartAbandonmentJob = async (): Promise<void> => {
     );
 
     // 2. Find abandoned carts (Req 14.1, 14.2)
+    // Use $or to match both explicit null and missing field
     const abandonedCarts = await Cart.find({
       updatedAt: { $lt: cutoffTime },
-      abandonmentEmailSentAt: null,
+      $or: [
+        { abandonmentEmailSentAt: null },
+        { abandonmentEmailSentAt: { $exists: false } },
+      ],
       'items.0': { $exists: true },
     }).populate<{
       items: Array<{
@@ -209,8 +213,9 @@ export const runCartAbandonmentJob = async (): Promise<void> => {
         }
 
         // 5. Build email content (Req 14.2, 14.3)
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
-        const cartUrl = `${frontendUrl}/cart`;
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8000';
+        // Link goes to homepage — the cart drawer opens automatically from there
+        const cartUrl = `${frontendUrl}/?open_cart=1`;
 
         const emailItems = cart.items
           .filter((item) => item.productId) // guard against stale refs

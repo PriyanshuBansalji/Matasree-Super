@@ -11,12 +11,14 @@ const express_1 = require("express");
 const passport_1 = __importDefault(require("passport"));
 const passport_2 = require("../config/passport");
 const auth_1 = require("../middleware/auth");
+const captcha_1 = require("../middleware/captcha");
+const sessionController_1 = require("../controllers/sessionController");
 const authController_1 = require("../controllers/authController");
 const router = (0, express_1.Router)();
 // ============================================================
 // LOCAL AUTH ROUTES
 // ============================================================
-router.post('/register', authController_1.register);
+router.post('/register', captcha_1.verifyCaptcha, authController_1.register);
 router.post('/login', authController_1.login);
 router.post('/logout', auth_1.verifyToken, authController_1.logout);
 router.post('/logout-all', auth_1.verifyToken, authController_1.logoutAll);
@@ -39,8 +41,9 @@ router.get('/oauth-status', (_req, res) => {
 // ============================================================
 // OAUTH TOKEN RETRIEVAL (secure, one-time, cookie-authenticated)
 // ============================================================
-// Called by frontend after OAuth callback; returns access token exactly once
-router.get('/token', auth_1.verifyToken, authController_1.getOAuthToken);
+// Called by frontend after OAuth callback. Authenticates via the httpOnly
+// refresh-token cookie (no Bearer token available yet at this point).
+router.get('/token', authController_1.getOAuthToken);
 // ============================================================
 // OAUTH - GOOGLE
 // ============================================================
@@ -80,6 +83,12 @@ router.get('/github/callback', (req, res, next) => passport_2.configuredStrategi
 // ============================================================
 router.get('/profile', auth_1.verifyToken, authController_1.getProfile);
 router.put('/profile', auth_1.verifyToken, authController_1.updateProfile);
+// ============================================================
+// SESSION & DEVICE MANAGEMENT
+// ============================================================
+router.get('/sessions', auth_1.verifyToken, sessionController_1.getActiveSessions);
+router.delete('/sessions/:sessionId', auth_1.verifyToken, sessionController_1.revokeSession);
+router.delete('/sessions', auth_1.verifyToken, sessionController_1.revokeAllOtherSessions);
 // ============================================================
 // OTP ROUTES
 // ============================================================

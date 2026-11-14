@@ -133,8 +133,8 @@ const RefundPolicyPage = () => {
                     <p className="text-foreground/70 leading-relaxed mb-4">
                       For refund and return assistance:
                     </p>
-                    <a href="mailto:labourzkart@gmail.com" className="inline-flex items-center gap-2 text-primary hover:gap-3 transition-all font-semibold">
-                      matasreesuper@gmail.com
+                    <a href="mailto:admin@matasreesuper.com" className="inline-flex items-center gap-2 text-primary hover:gap-3 transition-all font-semibold">
+                      admin@matasreesuper.com
                       <ArrowRight className="w-4 h-4" />
                     </a>
                   </div>

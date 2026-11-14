@@ -7,7 +7,7 @@ export interface IPayment {
     razorpayOrderId?: string;
     razorpaySignature?: string;
     amount: number;
-    status: 'pending' | 'success' | 'failed';
+    status: 'pending' | 'success' | 'failed' | 'refund_initiated';
     method: 'razorpay' | 'cod';
     createdAt: Date;
     updatedAt: Date;

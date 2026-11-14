@@ -42,8 +42,11 @@ router.post('/', auth_1.verifyToken, orderController.createOrder);
 router.post('/verify-payment', auth_1.verifyToken, orderController.verifyPayment);
 router.get('/my-orders', auth_1.verifyToken, orderController.getOrders);
 router.get('/:id', auth_1.verifyToken, orderController.getOrderById);
+router.get('/:id/invoice', auth_1.verifyToken, orderController.downloadInvoice);
+router.put('/:id/cancel', auth_1.verifyToken, orderController.cancelOrder);
 // Admin routes
 router.get('/', auth_1.verifyToken, auth_1.verifyAdmin, orderController.getAllOrders);
 router.put('/:id/status', auth_1.verifyToken, auth_1.verifyAdmin, orderController.updateOrderStatus);
+router.post('/:id/refund', auth_1.verifyToken, auth_1.verifyAdmin, orderController.processRefund);
 exports.default = router;
 //# sourceMappingURL=orderRoutes.js.map

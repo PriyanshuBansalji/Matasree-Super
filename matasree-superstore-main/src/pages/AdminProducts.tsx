@@ -1,12 +1,27 @@
-import { useEffect, useState, useRef } from 'react';
+/**
+ * AdminProducts
+ *
+ * Shopify-style product catalog list view for Admin panel.
+ * Features data table, server pagination, status filter badges, row multi-selection,
+ * sticky BulkActionBar, CSV Import/Export panel, and fast search.
+ *
+ * Requirements: 11.1–11.8, 12.1–12.8, 18.4, 19.2, 19.5
+ */
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
+import { useProductAdminStore } from '@/store/productAdminStore';
 import { apiClient } from '@/services/api';
-import { useCategories } from '@/hooks/useApi';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import PageHelmet from '@/components/PageHelmet';
+import BulkActionBar from '@/components/admin/BulkActionBar';
+import ImportExportPanel from '@/components/admin/ImportExportPanel';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -15,595 +30,435 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ChevronLeft, Plus, Trash2, Edit, Search, X, Package, Upload, Image as ImageIcon } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Plus, Search, MoreHorizontal, Edit, Copy, Trash2, Eye,
+  Package, Filter, RefreshCw, Loader2, Star, Box, ChevronLeft, ChevronRight
+} from 'lucide-react';
 import { toast } from 'sonner';
-import PageHelmet from '@/components/PageHelmet';
 
-interface Product {
+interface ProductItem {
   _id: string;
   name: string;
+  brand?: string;
   price: number;
-  category: string | { _id: string; name: string; slug: string };
   stock?: number;
-  description?: string;
+  status?: string;
+  isFeatured?: boolean;
   image?: string;
+  category?: string | { _id: string; name: string };
+  variants?: any[];
+  createdAt?: string;
 }
+
+const statusBadgeMap: Record<string, { label: string; className: string }> = {
+  active: { label: 'Active', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+  draft: { label: 'Draft', className: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30' },
+  scheduled: { label: 'Scheduled', className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+  hidden: { label: 'Hidden', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+  archived: { label: 'Archived', className: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30' },
+};
 
 const AdminProducts = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+
+  const {
+    selectedProductIds,
+    listFilters,
+    setSelectedIds,
+    toggleSelected,
+    selectAll,
+    clearSelection,
+    setListFilters,
+  } = useProductAdminStore();
+
+  const [products, setProducts] = useState<ProductItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const { data: categoriesData } = useCategories();
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [searchInput, setSearchInput] = useState(listFilters.search || '');
 
-  const categoriesList = (() => {
-    const cats = categoriesData?.data || [];
-    return Array.isArray(cats) ? cats : [];
-  })();
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [imageLoadKey, setImageLoadKey] = useState(0);
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response: any = await apiClient.adminListProducts(listFilters);
+      const data = response?.data ?? response;
+      const list = data?.products || data?.data || (Array.isArray(data) ? data : []);
+      const pagination = data?.pagination || {};
 
-  const BACKEND_URL = apiClient.getBaseUrl();
-
-  // Helper function to construct proper image URL
-  const getImageUrl = (path: string | null | undefined): string => {
-    if (!path) return '';
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
+      setProducts(list);
+      setTotalCount(pagination.total || list.length);
+      setTotalPages(pagination.pages || 1);
+    } catch (err: any) {
+      toast.error('Failed to load admin product catalog');
+    } finally {
+      setLoading(false);
     }
-    if (path.startsWith('/')) {
-      return `${BACKEND_URL}${path}`;
-    }
-    return path;
-  };
-
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    category: '',
-    stock: '',
-    image: '',
-  });
+  }, [listFilters]);
 
   useEffect(() => {
-    if (!user?.isAdmin && user?.role !== 'admin') {
+    if (user?.role !== 'admin') {
       navigate('/');
       return;
     }
     fetchProducts();
-  }, [user, navigate]);
+  }, [user, navigate, fetchProducts]);
 
+  // Debounced search input sync
   useEffect(() => {
-    filterProducts();
-  }, [products, searchTerm]);
-
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.getProducts();
-      // Response structure after interceptor: { success, data: { products: [...], pagination: {...} }, statusCode }
-      const productList = response?.data?.products || response?.data || [];
-      setProducts(Array.isArray(productList) ? productList : []);
-    } catch (error) {
-      console.error('Failed to fetch products:', error);
-      toast.error('Failed to fetch products');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterProducts = () => {
-    const filtered = products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.description?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredProducts(filtered);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.name || !formData.price || !formData.category) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    try {
-      const payload = {
-        ...formData,
-        price: parseFloat(formData.price),
-        stock: parseInt(formData.stock) || 0,
-        weight: '100g',
-      };
-
-      if (editingId) {
-        await apiClient.updateProduct(editingId, payload);
-        toast.success('Product updated successfully');
-      } else {
-        await apiClient.createProduct(payload);
-        toast.success('Product created successfully');
+    const timer = setTimeout(() => {
+      if (searchInput !== listFilters.search) {
+        setListFilters({ search: searchInput, page: 1 });
       }
-
-      setFormData({
-        name: '',
-        description: '',
-        price: '',
-        category: '',
-        stock: '',
-        image: '',
-      });
-      setEditingId(null);
-      setShowForm(false);
-      fetchProducts();
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Failed to save product');
-    }
-  };
-
-  const handleEdit = (product: Product) => {
-    setFormData({
-      name: product.name,
-      description: product.description || '',
-      price: product.price.toString(),
-      category: typeof product.category === 'string' ? product.category : product.category?.name || '',
-      stock: product.stock?.toString() || '0',
-      image: product.image || '',
-    });
-    setImagePreview(product.image ? getImageUrl(product.image) : null);
-    setEditingId(product._id);
-    setShowForm(true);
-  };
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput, listFilters.search, setListFilters]);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this product?'))
-      return;
-
+    if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
-      await apiClient.deleteProduct(id);
-      toast.success('Product deleted successfully');
+      await apiClient.adminDeleteProduct(id);
+      toast.success('Product deleted');
       fetchProducts();
-    } catch (error: any) {
-      toast.error(
-        error?.response?.data?.message || 'Failed to delete product'
-      );
+    } catch (err: any) {
+      toast.error('Failed to delete product');
     }
   };
 
-  const handleCancel = () => {
-    setFormData({
-      name: '',
-      description: '',
-      price: '',
-      category: '',
-      stock: '',
-      image: '',
-    });
-    setImagePreview(null);
-    setEditingId(null);
-    setShowForm(false);
-  };
-
-  const getStockStatus = (stock: number | undefined) => {
-    if (!stock || stock <= 0)
-      return { color: 'bg-red-100 text-red-800', text: 'Out of Stock' };
-    if (stock <= 5)
-      return { color: 'bg-orange-100 text-orange-800', text: 'Low Stock' };
-    return { color: 'bg-green-100 text-green-800', text: 'In Stock' };
-  };
-
-  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Image size must be less than 10MB');
-      return;
-    }
-
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
-      toast.error('Please upload a valid image format (JPEG, PNG, WebP, GIF)');
-      return;
-    }
-
+  const handleDuplicate = async (id: string) => {
     try {
-      setUploadingImage(true);
-      const formDataToSend = new FormData();
-      formDataToSend.append('image', file);
-
-      const response = await apiClient.uploadImage(formDataToSend);
-
-      // Response structure: { success, data: { imageUrl: '...' }, statusCode }
-      if (response?.data?.imageUrl) {
-        const imagePath = response.data.imageUrl;
-        setFormData(prev => ({ ...prev, image: imagePath }));
-
-        const fullUrl = getImageUrl(imagePath);
-        setTimeout(() => {
-          setImagePreview(fullUrl);
-          setImageLoadKey(Date.now());
-        }, 1000);
-
-        toast.success('Image uploaded successfully');
-      }
-    } catch (error: any) {
-      console.error('❌ Image upload error:', error);
-      toast.error(error?.response?.data?.message || 'Failed to upload image');
-    } finally {
-      setUploadingImage(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      await apiClient.adminDuplicateProduct(id);
+      toast.success('Product duplicated as draft');
+      fetchProducts();
+    } catch (err: any) {
+      toast.error('Failed to duplicate product');
     }
   };
+
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    try {
+      await apiClient.adminUpdateProductStatus(id, newStatus);
+      toast.success(`Status updated to ${newStatus}`);
+      fetchProducts();
+    } catch (err: any) {
+      toast.error('Failed to update status');
+    }
+  };
+
+  const pageIds = products.map((p) => p._id);
+  const isAllPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedProductIds.includes(id));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <PageHelmet
-        title="Admin: Products | Matasree Super Masale"
-        description="Manage products on Matasree Super Masale admin panel."
-        canonicalUrl="https://matasreesuper.com/admin/products"
-        noIndex={true}
-      />
+    <div className="min-h-screen bg-background flex flex-col">
+      <PageHelmet title="Product Catalog Management | Admin Matasree" noIndex={true} />
       <Navbar />
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate('/admin/dashboard')}
-            >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-4xl font-bold flex items-center gap-2">
-                <Package className="h-8 w-8 text-blue-600" />
-                Manage Products
-              </h1>
-              <p className="text-gray-600">Total: {filteredProducts.length} products</p>
-            </div>
+      <main className="container mx-auto px-4 pt-24 pb-32 max-w-7xl flex-grow">
+        {/* Header Title & Actions */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground">
+              Product Catalog Management
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Manage product listings, inventory levels, pricing, variants, and catalog status.
+            </p>
           </div>
-          <Button
-            onClick={() => {
-              setShowForm(!showForm);
-              if (showForm) handleCancel();
-            }}
-            className="gap-2 bg-blue-600 hover:bg-blue-700"
-          >
-            <Plus className="h-4 w-4" />
-            {showForm ? 'Cancel' : 'Add Product'}
-          </Button>
+
+          <div className="flex items-center gap-3">
+            <ImportExportPanel onRefetch={fetchProducts} />
+
+            <Button
+              onClick={() => navigate('/admin/products/new')}
+              className="bg-gradient-spice text-white text-xs gap-1.5 shadow-md hover:scale-105 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Add Product
+            </Button>
+          </div>
         </div>
 
-        {/* Product Form */}
-        {showForm && (
-          <Card className="mb-8 border-l-4 border-l-blue-600 shadow-lg">
-            <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100">
-              <CardTitle>
-                {editingId ? 'Edit Product' : 'Add New Product'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <form
-                onSubmit={handleSubmit}
-                className="grid grid-cols-1 md:grid-cols-2 gap-6"
-              >
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Product Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter product name"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Price (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) =>
-                      setFormData({ ...formData, price: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="0.00"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Category *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.category}
-                    onChange={(e) =>
-                      setFormData({ ...formData, category: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="e.g., Spices, Masalas"
-                    list="categories"
-                  />
-                  <datalist id="categories">
-                    {categoriesList.map((cat: any) => (
-                      <option key={cat._id} value={cat.name} />
-                    ))}
-                  </datalist>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Stock Quantity
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.stock}
-                    onChange={(e) =>
-                      setFormData({ ...formData, stock: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="0"
-                    min="0"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        description: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24 resize-none"
-                    placeholder="Enter product description..."
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Product Image
-                  </label>
-                  <div className="space-y-4">
-                    {/* Image Upload Area */}
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-blue-300 rounded-lg p-6 cursor-pointer hover:bg-blue-50 transition-colors text-center"
-                    >
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        onChange={handleImageSelect}
-                        className="hidden"
-                      />
-                      <Upload className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                      <p className="text-sm font-medium text-gray-700">
-                        {uploadingImage ? 'Uploading...' : 'Click to upload or drag and drop'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        PNG, JPG, WebP, GIF up to 10MB
-                      </p>
-                    </div>
-
-                    {/* Image Preview */}
-                    {imagePreview && (
-                      <div className="relative inline-block">
-                        <img
-                          key={imageLoadKey}
-                          src={imagePreview}
-                          alt="Product preview"
-                          className="h-40 w-40 object-cover rounded-lg border-2 border-blue-300"
-                          onError={(e) => {
-                            console.error('❌ Image failed to load from:', (e.target as HTMLImageElement).src);
-                            console.error('💡 Make sure backend is running at ' + BACKEND_URL);
-
-                            // Retry after 1 second
-                            setTimeout(() => {
-                              console.log('🔄 Retrying image load...');
-                              setImageLoadKey(prev => prev + 1);
-                            }, 1000);
-                          }}
-                          onLoad={() => {
-                            console.log('✅ Image loaded successfully');
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setImagePreview(null);
-                            setFormData(prev => ({ ...prev, image: '' }));
-                            setImageLoadKey(0);
-                          }}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-lg"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Manual URL Input */}
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-2">
-                        Or paste image URL
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.image}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData(prev => ({ ...prev, image: value }));
-                          const previewUrl = getImageUrl(value);
-                          setImagePreview(previewUrl);
-                        }}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="/uploads/products/image.jpg or https://example.com/image.jpg"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="md:col-span-2 flex gap-3">
-                  <Button
-                    type="submit"
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    {editingId ? 'Update Product' : 'Create Product'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCancel}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Search */}
-        <Card className="mb-6 shadow-md">
-          <CardContent className="pt-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by name or description..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+        {/* Filters and Search Bar */}
+        <Card className="mb-6 shadow-sm border-border">
+          <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search products by name, brand, SKU..."
+                className="pl-9 h-9 text-xs"
               />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+            </div>
+
+            {/* Filter Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={listFilters.status === '' ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setListFilters({ status: '', page: 1 })}
+                className="text-xs h-8"
+              >
+                All
+              </Button>
+              <Button
+                variant={listFilters.status === 'active' ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setListFilters({ status: 'active', page: 1 })}
+                className="text-xs h-8 text-emerald-600"
+              >
+                Active
+              </Button>
+              <Button
+                variant={listFilters.status === 'draft' ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setListFilters({ status: 'draft', page: 1 })}
+                className="text-xs h-8"
+              >
+                Drafts
+              </Button>
+              <Button
+                variant={listFilters.isFeatured ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setListFilters({ isFeatured: !listFilters.isFeatured, page: 1 })}
+                className="text-xs h-8 text-amber-600"
+              >
+                <Star className="w-3 h-3 mr-1" /> Featured
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={fetchProducts}
+                title="Refresh catalog"
+                className="h-8 w-8"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Products Table */}
-        <Card className="shadow-lg">
-          <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100">
-            <CardTitle>All Products ({filteredProducts.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading products...</p>
-              </div>
-            ) : filteredProducts.length === 0 ? (
-              <div className="text-center py-12">
-                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4 opacity-50" />
-                <p className="text-gray-600 text-lg font-medium">
-                  No products found
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-100">
-                      <TableHead className="font-semibold">Name</TableHead>
-                      <TableHead className="font-semibold">Category</TableHead>
-                      <TableHead className="font-semibold">Price</TableHead>
-                      <TableHead className="font-semibold">Stock</TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold text-right">
-                        Actions
-                      </TableHead>
+        {/* Data Table */}
+        <Card className="shadow-sm border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={isAllPageSelected}
+                      onCheckedChange={() => selectAll(pageIds)}
+                      aria-label="Select all products"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[60px]">Image</TableHead>
+                  <TableHead>Product Name</TableHead>
+                  <TableHead className="w-[110px]">Category</TableHead>
+                  <TableHead className="w-[90px]">Variants</TableHead>
+                  <TableHead className="w-[90px]">Price (₹)</TableHead>
+                  <TableHead className="w-[80px]">Stock</TableHead>
+                  <TableHead className="w-[100px]">Status</TableHead>
+                  <TableHead className="w-[80px] text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell colSpan={9} className="h-12 text-center text-xs text-muted-foreground animate-pulse">
+                        Loading products...
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProducts.map((product) => {
-                      const stockStatus = getStockStatus(product.stock);
-                      return (
-                        <TableRow
-                          key={product._id}
-                          className="hover:bg-gray-50 border-b"
-                        >
-                          <TableCell className="font-medium text-gray-900">
-                            {product.name}
-                          </TableCell>
-                          <TableCell>
-                            <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-3 py-1 rounded-full">
-                              {typeof product.category === 'string' ? product.category : product.category?.name}
-                            </span>
-                          </TableCell>
-                          <TableCell className="font-semibold text-gray-900">
-                            ₹{product.price?.toLocaleString('en-IN')}
-                          </TableCell>
-                          <TableCell className="text-center font-medium">
-                            {product.stock || 0} units
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={`inline-block text-xs font-medium px-3 py-1 rounded-full ${stockStatus.color}`}
-                            >
-                              {stockStatus.text}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex gap-2 justify-end">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEdit(product)}
-                              >
-                                <Edit className="h-4 w-4" />
+                  ))
+                ) : products.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="h-48 text-center text-muted-foreground">
+                      <Package className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                      <p className="font-medium text-sm">No products found matching filters.</p>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => { setSearchInput(''); setListFilters({ search: '', status: '', page: 1 }); }}
+                        className="text-xs text-primary"
+                      >
+                        Reset Filters
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  products.map((p) => {
+                    const isSelected = selectedProductIds.includes(p._id);
+                    const categoryName = typeof p.category === 'object' ? p.category?.name : p.category || 'Uncategorized';
+                    const statusInfo = statusBadgeMap[p.status || 'active'] || statusBadgeMap.active;
+                    const totalStock = p.variants ? p.variants.reduce((sum, v) => sum + (v.stock || 0), 0) : p.stock || 0;
+
+                    return (
+                      <TableRow key={p._id} className={isSelected ? 'bg-muted/40' : ''}>
+                        <TableCell>
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelected(p._id)}
+                            aria-label={`Select ${p.name}`}
+                          />
+                        </TableCell>
+
+                        {/* Thumbnail */}
+                        <TableCell>
+                          <div className="w-10 h-10 rounded-lg border overflow-hidden bg-secondary flex items-center justify-center">
+                            {p.image ? (
+                              <img
+                                src={
+                                  p.image.startsWith('http') || p.image.startsWith('data:')
+                                    ? p.image
+                                    : p.image.startsWith('/')
+                                    ? `${apiClient.getBaseUrl()}${p.image}`
+                                    : p.image
+                                }
+                                alt={p.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.src = 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=600';
+                                }}
+                              />
+                            ) : (
+                              <Box className="w-5 h-5 text-muted-foreground opacity-40" />
+                            )}
+                          </div>
+                        </TableCell>
+
+                        {/* Name & Brand */}
+                        <TableCell>
+                          <div className="font-medium text-sm text-foreground hover:text-primary transition-colors cursor-pointer" onClick={() => navigate(`/admin/products/${p._id}/edit`)}>
+                            {p.name}
+                            {p.isFeatured && <Star className="w-3 h-3 text-amber-500 inline ml-1.5 fill-amber-500" />}
+                          </div>
+                          {p.brand && <span className="text-[11px] text-muted-foreground block">{p.brand}</span>}
+                        </TableCell>
+
+                        {/* Category */}
+                        <TableCell className="text-xs font-medium text-muted-foreground">
+                          {categoryName}
+                        </TableCell>
+
+                        {/* Variants Count */}
+                        <TableCell className="text-xs font-mono">
+                          {p.variants?.length || 1} variant(s)
+                        </TableCell>
+
+                        {/* Price */}
+                        <TableCell className="font-mono text-xs font-bold text-foreground">
+                          ₹{p.price?.toFixed(2)}
+                        </TableCell>
+
+                        {/* Stock */}
+                        <TableCell className="font-mono text-xs">
+                          <span className={totalStock <= 0 ? 'text-red-500 font-bold' : totalStock <= 10 ? 'text-amber-500 font-bold' : 'text-emerald-600 font-bold'}>
+                            {totalStock}
+                          </span>
+                        </TableCell>
+
+                        {/* Status Badge */}
+                        <TableCell>
+                          <Badge variant="outline" className={`text-[10px] uppercase font-mono px-2 py-0.5 ${statusInfo.className}`}>
+                            {statusInfo.label}
+                          </Badge>
+                        </TableCell>
+
+                        {/* Actions Menu */}
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="w-4 h-4" />
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleDelete(product._id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44 text-xs">
+                              <DropdownMenuLabel>Product Actions</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => navigate(`/product/${p._id}`)}>
+                                <Eye className="w-3.5 h-3.5 mr-2 text-muted-foreground" /> Storefront View
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => navigate(`/admin/products/${p._id}/edit`)}>
+                                <Edit className="w-3.5 h-3.5 mr-2 text-primary" /> Edit Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDuplicate(p._id)}>
+                                <Copy className="w-3.5 h-3.5 mr-2 text-blue-500" /> Duplicate
+                              </DropdownMenuItem>
+
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleStatusChange(p._id, 'active')}>
+                                Set Active
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(p._id, 'draft')}>
+                                Set Draft
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(p._id, 'hidden')}>
+                                Set Hidden
+                              </DropdownMenuItem>
+
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleDelete(p._id)} className="text-red-600 focus:text-red-600">
+                                <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination Footer */}
+          <div className="p-4 border-t border-border flex items-center justify-between gap-4">
+            <span className="text-xs text-muted-foreground font-mono">
+              Showing {products.length} of {totalCount} product(s)
+            </span>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={listFilters.page <= 1}
+                onClick={() => setListFilters({ page: listFilters.page - 1 })}
+                className="h-8 text-xs gap-1"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Previous
+              </Button>
+              <span className="text-xs font-mono px-2">
+                Page {listFilters.page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={listFilters.page >= totalPages}
+                onClick={() => setListFilters({ page: listFilters.page + 1 })}
+                className="h-8 text-xs gap-1"
+              >
+                Next <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
         </Card>
-      </div>
+      </main>
+
+      {/* Sticky Bulk Action Bar */}
+      <BulkActionBar
+        selectedIds={selectedProductIds}
+        onClearSelection={clearSelection}
+        onSuccess={fetchProducts}
+      />
 
       <Footer />
     </div>

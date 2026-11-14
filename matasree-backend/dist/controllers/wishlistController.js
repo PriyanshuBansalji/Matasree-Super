@@ -29,7 +29,7 @@ const getWishlist = async (req, res) => {
         // Populate product fields; null entries indicate deleted products
         const populated = await Wishlist_1.default.findById(wishlist._id).populate({
             path: 'items.productId',
-            select: 'name price image stock',
+            select: 'name price originalPrice image stock weight variants rating',
         });
         if (!populated) {
             return res.status(200).json(new response_1.ApiResponse(true, 'Wishlist fetched', { items: [] }));
@@ -50,8 +50,12 @@ const getWishlist = async (req, res) => {
                     product: {
                         name: product.name,
                         price: product.price,
+                        originalPrice: product.originalPrice,
                         image: product.image,
                         stock: product.stock,
+                        weight: product.weight,
+                        variants: product.variants ?? [],
+                        rating: product.rating ?? 0,
                     },
                 });
             }

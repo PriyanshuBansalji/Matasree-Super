@@ -111,7 +111,7 @@
 EMAIL_SERVICE=gmail
 EMAIL_USER=matasreesuper@gmail.com
 EMAIL_PASSWORD=tsehordirstovuzf
-ADMIN_EMAIL=matasreesuper@gmail.com
+ADMIN_EMAIL=admin@matasreesuper.com
 FRONTEND_URL=http://localhost:8080
 ```
 

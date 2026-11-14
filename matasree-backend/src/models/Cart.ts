@@ -4,6 +4,7 @@ export interface ICartItem {
   productId: mongoose.Types.ObjectId;
   quantity: number;
   price: number;
+  weight: string;
   addedAt: Date;
 }
 
@@ -39,6 +40,11 @@ const cartSchema = new Schema<ICart>(
         price: {
           type: Number,
           required: true,
+        },
+        weight: {
+          type: String,
+          required: true,
+          trim: true,
         },
         addedAt: {
           type: Date,

@@ -46,7 +46,7 @@ const AdminOrders = () => {
   const [filterStatus, setFilterStatus] = useState('all');
 
   useEffect(() => {
-    if (!user?.isAdmin) {
+    if (user?.role !== 'admin') {
       navigate('/');
       return;
     }
@@ -90,9 +90,7 @@ const AdminOrders = () => {
   const handleStatusUpdate = async (orderId: string, newStatus: string) => {
     try {
       setUpdatingId(orderId);
-      await apiClient.updateOrder(orderId, {
-        orderstatus: newStatus,
-      });
+      await apiClient.updateOrderStatus(orderId, newStatus);
       toast.success('Order status updated');
       fetchOrders();
     } catch (error: any) {
@@ -112,7 +110,7 @@ const AdminOrders = () => {
           text: 'text-yellow-800',
           icon: 'text-yellow-600',
         };
-      case 'processing':
+      case 'confirmed':
         return {
           bg: 'bg-blue-100',
           text: 'text-blue-800',
@@ -140,7 +138,7 @@ const AdminOrders = () => {
   const orderStats = {
     total: orders.length,
     pending: orders.filter((o) => o.orderstatus === 'pending').length,
-    processing: orders.filter((o) => o.orderstatus === 'processing').length,
+    confirmed: orders.filter((o) => o.orderstatus === 'confirmed').length,
     shipped: orders.filter((o) => o.orderstatus === 'shipped').length,
     delivered: orders.filter((o) => o.orderstatus === 'delivered').length,
   };
@@ -195,9 +193,9 @@ const AdminOrders = () => {
           <Card>
             <CardContent className="pt-6">
               <div className="text-2xl font-bold text-blue-600">
-                {orderStats.processing}
+                {orderStats.confirmed}
               </div>
-              <p className="text-sm text-gray-600">Processing</p>
+              <p className="text-sm text-gray-600">Confirmed</p>
             </CardContent>
           </Card>
           <Card>
@@ -257,7 +255,7 @@ const AdminOrders = () => {
                 >
                   <option value="all">All Status</option>
                   <option value="pending">Pending</option>
-                  <option value="processing">Processing</option>
+                  <option value="confirmed">Confirmed</option>
                   <option value="shipped">Shipped</option>
                   <option value="delivered">Delivered</option>
                   <option value="cancelled">Cancelled</option>
@@ -376,8 +374,8 @@ const AdminOrders = () => {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="processing">
-                                  Processing
+                                <SelectItem value="confirmed">
+                                  Confirmed
                                 </SelectItem>
                                 <SelectItem value="shipped">Shipped</SelectItem>
                                 <SelectItem value="delivered">

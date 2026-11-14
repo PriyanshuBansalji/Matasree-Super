@@ -26,7 +26,7 @@ const validateCouponSchema = Joi.object({
 const applyCouponSchema = Joi.object({
   code: Joi.string().required().trim(),
   orderId: Joi.string().optional(),
-  orderAmount: Joi.number().required().min(0),
+  orderAmount: Joi.number().optional().min(0).default(0),
   cartItems: Joi.array().items(Joi.object({
     productId: Joi.string().required(),
     categoryId: Joi.string().optional(),
@@ -36,6 +36,7 @@ const applyCouponSchema = Joi.object({
 });
 
 const adminCreateCouponSchema = Joi.object({
+  code: Joi.string().trim().uppercase().min(3).max(20).optional(),
   email: Joi.string().email().optional(),
   discountType: Joi.string().valid('percentage', 'fixed').optional(),
   discountValue: Joi.number().min(0).optional(),
@@ -168,7 +169,7 @@ router.post('/validate', verifyToken, async (req: any, res: Response) => {
 
         // Newsletter coupon ownership check (pre-existing business rule)
         if (coupon.source === 'newsletter') {
-            if (authReq.user && coupon.email.toLowerCase() !== authReq.user.email.toLowerCase()) {
+            if (authReq.user && coupon.email?.toLowerCase() !== authReq.user.email.toLowerCase()) {
                 return res.status(400).json(new ApiResponse(false, 'This coupon code belongs to another account', null, 400));
             }
 
@@ -240,7 +241,7 @@ router.post('/apply', verifyToken, async (req: any, res: Response) => {
 
         // Newsletter coupon ownership check (pre-existing business rule)
         if (coupon.source === 'newsletter') {
-            if (authReq.user && coupon.email.toLowerCase() !== authReq.user.email.toLowerCase()) {
+            if (authReq.user && coupon.email?.toLowerCase() !== authReq.user.email.toLowerCase()) {
                 return res.status(400).json(new ApiResponse(false, 'This 10% off code belongs to another account', null, 400));
             }
 
@@ -331,6 +332,7 @@ router.post('/admin/create', verifyToken, verifyAdmin, async (req: any, res: Res
         }
 
         const {
+            code: customCode,
             email,
             discountType,
             discountValue,
@@ -342,13 +344,24 @@ router.post('/admin/create', verifyToken, verifyAdmin, async (req: any, res: Res
             categoryRestrictions,
         } = value;
 
-        const code = generateUniqueCode('MSVIP');
+        // Use admin-provided code, or auto-generate one
+        let code: string;
+        if (customCode) {
+            // Check if code already exists
+            const existing = await Coupon.findOne({ code: customCode.toUpperCase().trim() });
+            if (existing) {
+                return res.status(400).json(new ApiResponse(false, 'Coupon code already exists', null, 400));
+            }
+            code = customCode.toUpperCase().trim();
+        } else {
+            code = generateUniqueCode('MSVIP');
+        }
 
         const couponData: Record<string, unknown> = {
             code,
-            email: email || 'admin@matasreesuper.com',
+            email: email || '',
             discountType: discountType || 'percentage',
-            discountValue: discountValue || 10,
+            discountValue: discountValue ?? 10,
             minOrderAmount: minOrderAmount || 0,
             maxDiscount: maxDiscount || 0,
             maxUses: maxUses || 0,
@@ -366,6 +379,22 @@ router.post('/admin/create', verifyToken, verifyAdmin, async (req: any, res: Res
         return res.status(201).json(new ApiResponse(true, 'Coupon created', coupon));
     } catch (error: any) {
         return res.status(500).json(new ApiResponse(false, error.message || 'Failed to create coupon', null, 500));
+    }
+});
+
+/**
+ * Admin: Delete a coupon
+ */
+router.delete('/admin/:id', verifyToken, verifyAdmin, async (req: any, res: Response) => {
+    try {
+        const { id } = req.params;
+        const coupon = await Coupon.findByIdAndDelete(id);
+        if (!coupon) {
+            return res.status(404).json(new ApiResponse(false, 'Coupon not found', null, 404));
+        }
+        return res.status(200).json(new ApiResponse(true, 'Coupon deleted successfully'));
+    } catch (error: any) {
+        return res.status(500).json(new ApiResponse(false, error.message || 'Failed to delete coupon', null, 500));
     }
 });
 

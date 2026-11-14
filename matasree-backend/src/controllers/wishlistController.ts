@@ -37,7 +37,7 @@ export const getWishlist = async (req: any, res: Response) => {
     // Populate product fields; null entries indicate deleted products
     const populated = await Wishlist.findById(wishlist._id).populate({
       path: 'items.productId',
-      select: 'name price image stock',
+      select: 'name price originalPrice image stock weight variants rating',
     });
 
     if (!populated) {
@@ -49,7 +49,16 @@ export const getWishlist = async (req: any, res: Response) => {
     const validItems: Array<{
       productId: mongoose.Types.ObjectId;
       addedAt: Date;
-      product: { name: string; price: number; image: string; stock: number };
+      product: {
+        name: string;
+        price: number;
+        originalPrice?: number;
+        image: string;
+        stock: number;
+        weight?: string;
+        variants?: any[];
+        rating?: number;
+      };
     }> = [];
 
     for (const item of populated.items) {
@@ -64,8 +73,12 @@ export const getWishlist = async (req: any, res: Response) => {
           product: {
             name: product.name,
             price: product.price,
+            originalPrice: product.originalPrice,
             image: product.image,
             stock: product.stock,
+            weight: product.weight,
+            variants: product.variants ?? [],
+            rating: product.rating ?? 0,
           },
         });
       }

@@ -75,5 +75,6 @@ const reviewSchema = new mongoose_1.Schema({
 }, { timestamps: true });
 reviewSchema.index({ productId: 1 });
 reviewSchema.index({ isApproved: 1, isFeatured: 1 });
+reviewSchema.index({ userId: 1, productId: 1 }, { unique: true, background: true });
 exports.default = mongoose_1.default.model('Review', reviewSchema);
 //# sourceMappingURL=Review.js.map

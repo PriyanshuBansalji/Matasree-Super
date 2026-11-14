@@ -14,11 +14,11 @@ const reviewSchema = Joi.object({
     name: Joi.string().required().trim().max(100),
     rating: Joi.number().required().min(1).max(5),
     comment: Joi.string().required().trim().max(1000),
-    productId: Joi.string().required(),
+    productId: Joi.string().optional(),
     email: Joi.string().email().optional(),
 });
 
-// Submit a review (requires authentication + must have purchased the product)
+// Submit a review (requires authentication for product reviews; general feedback is open)
 router.post('/submit', verifyToken, async (req: any, res: Response) => {
     try {
         const { error, value } = reviewSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
@@ -30,25 +30,44 @@ router.post('/submit', verifyToken, async (req: any, res: Response) => {
         const userId = authReq.user!.userId;
         const { productId, name, rating, comment } = value;
 
-        // Check that user has at least one paid order containing this product
-        const purchaseExists = await Order.findOne({
-            userId: new mongoose.Types.ObjectId(userId),
-            'items.productId': new mongoose.Types.ObjectId(productId),
-            paymentStatus: 'paid',
-        });
+        if (productId) {
+            // Product-specific review: check that user has purchased this product
+            // Allow: paid online orders OR any COD order (COD never reaches 'paid' status)
+            const productObjectId = new mongoose.Types.ObjectId(productId);
+            const purchaseExists = await Order.findOne({
+                userId: new mongoose.Types.ObjectId(userId),
+                // Match productId stored as either ObjectId or string
+                $or: [
+                    {
+                        'items.productId': productObjectId,
+                        $or: [
+                            { paymentMethod: { $in: ['cashfree', 'razorpay'] }, paymentStatus: 'paid' },
+                            { paymentMethod: 'cod', orderstatus: { $in: ['pending', 'confirmed', 'shipped', 'delivered'] } },
+                        ],
+                    },
+                    {
+                        'items.productId': productId, // string fallback
+                        $or: [
+                            { paymentMethod: { $in: ['cashfree', 'razorpay'] }, paymentStatus: 'paid' },
+                            { paymentMethod: 'cod', orderstatus: { $in: ['pending', 'confirmed', 'shipped', 'delivered'] } },
+                        ],
+                    },
+                ],
+            });
 
-        if (!purchaseExists) {
-            return res.status(403).json(new ApiResponse(false, 'You must purchase this product before reviewing it.', null, 403));
-        }
+            if (!purchaseExists) {
+                return res.status(403).json(new ApiResponse(false, 'You must purchase this product before reviewing it.', null, 403));
+            }
 
-        // Prevent duplicate reviews
-        const existingReview = await Review.findOne({
-            userId: new mongoose.Types.ObjectId(userId),
-            productId: new mongoose.Types.ObjectId(productId),
-        });
+            // Prevent duplicate reviews for the same product
+            const existingReview = await Review.findOne({
+                userId: new mongoose.Types.ObjectId(userId),
+                productId: new mongoose.Types.ObjectId(productId),
+            });
 
-        if (existingReview) {
-            return res.status(409).json(new ApiResponse(false, 'You have already reviewed this product.', null, 409));
+            if (existingReview) {
+                return res.status(409).json(new ApiResponse(false, 'You have already reviewed this product.', null, 409));
+            }
         }
 
         const review = await Review.create({
@@ -142,7 +161,40 @@ router.get('/admin/all', verifyToken, verifyAdmin, async (req: any, res: Respons
     }
 });
 
-// Admin: Approve/reject review — recomputes product rating when approved
+// Helper to recalculate product rating and review count based on approved reviews (Phase 2, Req 7.1)
+const recalculateProductRating = async (productId: any) => {
+    try {
+        const stats = await Review.aggregate([
+            { $match: { productId: new mongoose.Types.ObjectId(productId), isApproved: true } },
+            {
+                $group: {
+                    _id: '$productId',
+                    avgRating: { $avg: '$rating' },
+                    count: { $sum: 1 },
+                },
+            },
+        ]);
+
+        if (stats.length > 0) {
+            const avgRating = Math.round(stats[0].avgRating * 100) / 100; // round to 2 decimal places
+            const count = stats[0].count;
+
+            await Product.findByIdAndUpdate(productId, {
+                rating: avgRating,
+                reviews: count,
+            });
+        } else {
+            await Product.findByIdAndUpdate(productId, {
+                rating: 0,
+                reviews: 0,
+            });
+        }
+    } catch (err: any) {
+        console.error(`[reviewRoutes] Failed to recalculate rating for product ${productId}:`, err.message);
+    }
+};
+
+// Admin: Approve/reject review — recomputes product rating (Phase 2, Req 7.2)
 router.put('/admin/:id/approve', verifyToken, verifyAdmin, async (req: any, res: Response) => {
     try {
         const { isApproved, isFeatured } = req.body;
@@ -156,18 +208,8 @@ router.put('/admin/:id/approve', verifyToken, verifyAdmin, async (req: any, res:
             return res.status(404).json(new ApiResponse(false, 'Review not found', null, 404));
         }
 
-        // When a review is approved, recompute the product's rating and review count
-        if (isApproved === true && review.productId) {
-            const approvedReviews = await Review.find({ productId: review.productId, isApproved: true });
-            const count = approvedReviews.length;
-            const mean = count > 0
-                ? Math.round((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / count) * 10) / 10
-                : 0;
-
-            await Product.findByIdAndUpdate(review.productId, {
-                rating: mean,
-                reviews: count,
-            });
+        if (review.productId) {
+            await recalculateProductRating(review.productId);
         }
 
         res.status(200).json(new ApiResponse(true, 'Review updated', review));
@@ -176,12 +218,18 @@ router.put('/admin/:id/approve', verifyToken, verifyAdmin, async (req: any, res:
     }
 });
 
+// Admin: Delete review (Phase 2, Req 7.3)
 router.delete('/admin/:id', verifyToken, verifyAdmin, async (req: any, res: Response) => {
     try {
         const review = await Review.findByIdAndDelete(req.params.id);
         if (!review) {
             return res.status(404).json(new ApiResponse(false, 'Review not found', null, 404));
         }
+
+        if (review.productId) {
+            await recalculateProductRating(review.productId);
+        }
+
         res.status(200).json(new ApiResponse(true, 'Review deleted'));
     } catch (error: any) {
         res.status(500).json(new ApiResponse(false, error.message || 'Failed to delete review', null, 500));

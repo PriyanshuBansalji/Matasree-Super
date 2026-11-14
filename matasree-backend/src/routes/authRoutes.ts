@@ -6,6 +6,8 @@ import { Router } from 'express';
 import passport from 'passport';
 import { configuredStrategies } from '../config/passport';
 import { verifyToken } from '../middleware/auth';
+import { verifyCaptcha } from '../middleware/captcha';
+import { getActiveSessions, revokeSession, revokeAllOtherSessions } from '../controllers/sessionController';
 import {
   register,
   login,
@@ -32,7 +34,7 @@ const router = Router();
 // ============================================================
 // LOCAL AUTH ROUTES
 // ============================================================
-router.post('/register', register);
+router.post('/register', verifyCaptcha, register);
 router.post('/login', login);
 router.post('/logout', verifyToken, logout);
 router.post('/logout-all', verifyToken, logoutAll);
@@ -58,8 +60,9 @@ router.get('/oauth-status', (_req, res) => {
 // ============================================================
 // OAUTH TOKEN RETRIEVAL (secure, one-time, cookie-authenticated)
 // ============================================================
-// Called by frontend after OAuth callback; returns access token exactly once
-router.get('/token', verifyToken, getOAuthToken);
+// Called by frontend after OAuth callback. Authenticates via the httpOnly
+// refresh-token cookie (no Bearer token available yet at this point).
+router.get('/token', getOAuthToken);
 
 // ============================================================
 // OAUTH - GOOGLE
@@ -126,6 +129,13 @@ router.get(
 // ============================================================
 router.get('/profile', verifyToken, getProfile);
 router.put('/profile', verifyToken, updateProfile);
+
+// ============================================================
+// SESSION & DEVICE MANAGEMENT
+// ============================================================
+router.get('/sessions', verifyToken, getActiveSessions);
+router.delete('/sessions/:sessionId', verifyToken, revokeSession);
+router.delete('/sessions', verifyToken, revokeAllOtherSessions);
 
 // ============================================================
 // OTP ROUTES

@@ -12,32 +12,28 @@ const storySteps = [
     title: 'Sourced from\nTrusted Farms',
     description:
       "We partner directly with generations of farmers across India's spice belts to ensure only the finest, sun-dried ingredients reach our facilities.",
-    image:
-      'https://images.unsplash.com/photo-1605651202774-7d573fd3f12d?auto=format&fit=crop&q=80&w=1200',
+    image: '/brand-story/Farm.png',
     accent: '#D63220',
   },
   {
     title: 'Carefully Cleaned\n& Processed',
     description:
       'Every batch undergoes rigorous quality checks. We meticulously pick, clean, and grade our spices to guarantee absolute purity before blending.',
-    image:
-      'https://plus.unsplash.com/premium_photo-1669862274482-1dd2df05d045?auto=format&fit=crop&q=80&w=1200',
+    image: '/brand-story/Processing.png',
     accent: '#E65C19',
   },
   {
     title: 'Traditional\nGrinding Methods',
     description:
       'We use low-temperature slow grinding techniques to preserve volatile essential oils, ensuring the aroma bursts to life only when cooked.',
-    image:
-      'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=1200',
+    image: '/brand-story/Grinding.png',
     accent: '#C4841D',
   },
   {
-    title: 'Packed with\nFreshness',
+    title: 'Packed with Freshness\nfor Your Kitchen',
     description:
       'Our premium multi-layered packaging locks in the rich aromas, vibrant colors, and robust flavors from our facility straight to your kitchen.',
-    image:
-      'https://images.unsplash.com/photo-1596647936647-1981edcb33a9?auto=format&fit=crop&q=80&w=1200',
+    image: '/brand-story/Packaging.png',
     accent: '#8B4513',
   },
 ];
@@ -148,18 +144,20 @@ const StoryStep = ({
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 1, ease: EASE_OUT_EXPO }}
         >
-          <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-[0_30px_80px_-15px_rgba(62,35,20,0.22)] group">
+          <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-[0_30px_80px_-15px_rgba(62,35,20,0.22)] group"
+            style={{ background: 'radial-gradient(ellipse at 50% 50%, #FFF8F0 60%, #F0DEC8 100%)' }}
+          >
             {/* Parallax Image */}
             <motion.img
               src={step.image}
               alt={step.title.replace('\n', ' ')}
               loading="lazy"
               style={{ y: imageY, scale: imageScale }}
-              className="absolute inset-0 w-full h-[130%] -top-[15%] object-cover transition-[filter] duration-500 group-hover:brightness-110"
+              className="absolute inset-0 w-full h-full object-cover transition-[filter,transform] duration-700 group-hover:scale-105 group-hover:brightness-105"
             />
 
-            {/* Gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#1a0c06]/50 via-transparent to-[#3E2314]/10 pointer-events-none" />
+            {/* Soft vignette */}
+            <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-[#FFF8F0]/20 pointer-events-none" />
 
             {/* Large watermark step number */}
             <span className="absolute bottom-4 right-6 font-serif font-black text-white/[0.12] text-[7rem] sm:text-[8rem] lg:text-[9rem] leading-none select-none pointer-events-none">

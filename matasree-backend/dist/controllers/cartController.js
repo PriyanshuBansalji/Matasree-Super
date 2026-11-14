@@ -8,6 +8,24 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const Cart_1 = __importDefault(require("../models/Cart"));
 const Product_1 = __importDefault(require("../models/Product"));
 const response_1 = require("../utils/response");
+const joi_1 = __importDefault(require("joi"));
+// ============================================================
+// VALIDATION SCHEMAS
+// ============================================================
+const addToCartSchema = joi_1.default.object({
+    productId: joi_1.default.string().required(),
+    quantity: joi_1.default.number().integer().min(1).required(),
+    weight: joi_1.default.string().required(),
+});
+const updateCartItemSchema = joi_1.default.object({
+    productId: joi_1.default.string().required(),
+    quantity: joi_1.default.number().integer().min(1).required(),
+    weight: joi_1.default.string().required(),
+});
+const removeFromCartSchema = joi_1.default.object({
+    productId: joi_1.default.string().required(),
+    weight: joi_1.default.string().required(),
+});
 /**
  * Get user's cart
  */
@@ -29,32 +47,40 @@ exports.getCart = getCart;
  */
 const addToCart = async (req, res) => {
     try {
-        const { productId, quantity } = req.body;
-        if (!productId || !quantity || quantity < 1) {
-            return res.status(400).json(new response_1.ApiResponse(false, 'Invalid product or quantity', null, 400));
+        const { error, value } = addToCartSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+        if (error) {
+            return res.status(400).json({ success: false, message: error.details[0].message });
         }
+        const { productId, quantity, weight } = value;
         const product = await Product_1.default.findById(productId);
         if (!product) {
             return res.status(404).json(new response_1.ApiResponse(false, 'Product not found', null, 404));
         }
-        if (product.stock < quantity) {
+        // Find live weight variant details
+        const variant = product.variants.find((v) => v.weight === weight);
+        const livePrice = variant ? variant.price : product.price;
+        const liveStock = variant ? variant.stock : product.stock;
+        if (liveStock < quantity) {
             return res.status(400).json(new response_1.ApiResponse(false, 'Insufficient stock', null, 400));
         }
         let cart = await Cart_1.default.findOne({ userId: req.user?.userId });
         if (!cart) {
             cart = await Cart_1.default.create({
                 userId: req.user?.userId,
-                items: [{ productId, quantity, price: product.price }],
+                items: [{ productId, quantity, price: livePrice, weight }],
+                abandonmentEmailSentAt: null, // fresh cart — reset abandonment tracker
             });
         }
         else {
-            const existingItem = cart.items.find((item) => item.productId.toString() === productId);
+            const existingItem = cart.items.find((item) => item.productId.toString() === productId && item.weight === weight);
             if (existingItem) {
                 existingItem.quantity += quantity;
             }
             else {
-                cart.items.push({ productId, quantity, price: product.price, addedAt: new Date() });
+                cart.items.push({ productId, quantity, price: livePrice, weight, addedAt: new Date() });
             }
+            // Reset abandonment tracker whenever items are modified (user is active again)
+            cart.abandonmentEmailSentAt = undefined;
             await cart.save();
         }
         const populatedCart = await Cart_1.default.findById(cart._id).populate('items.productId');
@@ -70,15 +96,16 @@ exports.addToCart = addToCart;
  */
 const updateCartItem = async (req, res) => {
     try {
-        const { productId, quantity } = req.body;
-        if (!productId || quantity < 1) {
-            return res.status(400).json(new response_1.ApiResponse(false, 'Invalid product or quantity', null, 400));
+        const { error, value } = updateCartItemSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+        if (error) {
+            return res.status(400).json({ success: false, message: error.details[0].message });
         }
+        const { productId, quantity, weight } = value;
         const cart = await Cart_1.default.findOne({ userId: req.user?.userId });
         if (!cart) {
             return res.status(404).json(new response_1.ApiResponse(false, 'Cart not found', null, 404));
         }
-        const item = cart.items.find((item) => item.productId.toString() === productId);
+        const item = cart.items.find((item) => item.productId.toString() === productId && item.weight === weight);
         if (!item) {
             return res.status(404).json(new response_1.ApiResponse(false, 'Item not in cart', null, 404));
         }
@@ -97,15 +124,16 @@ exports.updateCartItem = updateCartItem;
  */
 const removeFromCart = async (req, res) => {
     try {
-        const { productId } = req.body;
-        if (!productId) {
-            return res.status(400).json(new response_1.ApiResponse(false, 'Product ID is required', null, 400));
+        const { error, value } = removeFromCartSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+        if (error) {
+            return res.status(400).json({ success: false, message: error.details[0].message });
         }
+        const { productId, weight } = value;
         const cart = await Cart_1.default.findOne({ userId: req.user?.userId });
         if (!cart) {
             return res.status(404).json(new response_1.ApiResponse(false, 'Cart not found', null, 404));
         }
-        cart.items = cart.items.filter((item) => item.productId.toString() !== productId);
+        cart.items = cart.items.filter((item) => !(item.productId.toString() === productId && item.weight === weight));
         await cart.save();
         const populatedCart = await Cart_1.default.findById(cart._id).populate('items.productId');
         return res.status(200).json(new response_1.ApiResponse(true, 'Item removed from cart', populatedCart));
@@ -120,7 +148,7 @@ exports.removeFromCart = removeFromCart;
  */
 const clearCart = async (req, res) => {
     try {
-        await Cart_1.default.findOneAndUpdate({ userId: req.user?.userId }, { items: [] }, { new: true });
+        await Cart_1.default.findOneAndUpdate({ userId: req.user?.userId }, { items: [], $unset: { abandonmentEmailSentAt: '' } }, { new: true });
         res.status(200).json(new response_1.ApiResponse(true, 'Cart cleared'));
     }
     catch (error) {
@@ -158,10 +186,11 @@ const syncCart = async (req, res) => {
                 typeof item.quantity !== 'number' ||
                 item.quantity < 1 ||
                 typeof item.clientPrice !== 'number' ||
-                item.clientPrice < 0) {
+                item.clientPrice < 0 ||
+                typeof item.weight !== 'string') {
                 return res
                     .status(400)
-                    .json(new response_1.ApiResponse(false, 'Each item must have a valid productId, a positive quantity, and a non-negative clientPrice', null, 400));
+                    .json(new response_1.ApiResponse(false, 'Each item must have a valid productId, weight, positive quantity, and non-negative clientPrice', null, 400));
             }
         }
         // Fetch all referenced products in a single query
@@ -178,28 +207,44 @@ const syncCart = async (req, res) => {
         const removedItems = [];
         for (const clientItem of clientItems) {
             const live = liveMap.get(clientItem.productId);
-            // Remove items whose product is gone or out of stock (Req 24.2)
-            if (!live || live.stock === 0) {
+            if (!live) {
                 removedItems.push({
                     productId: clientItem.productId,
+                    weight: clientItem.weight,
+                    quantity: clientItem.quantity,
+                    clientPrice: clientItem.clientPrice,
+                });
+                continue;
+            }
+            // Reconcile against specific weight variant
+            const variant = live.variants.find((v) => v.weight === clientItem.weight);
+            const livePrice = variant ? variant.price : live.price;
+            const liveStock = variant ? variant.stock : live.stock;
+            // Remove items whose product/variant is out of stock (Req 24.2)
+            if (liveStock === 0) {
+                removedItems.push({
+                    productId: clientItem.productId,
+                    weight: clientItem.weight,
                     quantity: clientItem.quantity,
                     clientPrice: clientItem.clientPrice,
                 });
                 continue;
             }
             // Record price changes (Req 24.3)
-            if (live.price !== clientItem.clientPrice) {
+            if (livePrice !== clientItem.clientPrice) {
                 priceDiffs.push({
                     productId: clientItem.productId,
+                    weight: clientItem.weight,
                     oldPrice: clientItem.clientPrice,
-                    newPrice: live.price,
+                    newPrice: livePrice,
                 });
             }
             // Cap quantity at available stock (Req 24.1)
             syncedItems.push({
                 productId: live._id,
-                quantity: Math.min(clientItem.quantity, live.stock),
-                price: live.price,
+                quantity: Math.min(clientItem.quantity, liveStock),
+                price: livePrice,
+                weight: clientItem.weight,
             });
         }
         // Persist reconciled cart (Req 24.4)

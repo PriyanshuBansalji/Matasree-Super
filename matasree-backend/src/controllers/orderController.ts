@@ -1,4 +1,6 @@
 import { Response } from 'express';
+import crypto from 'crypto';
+import mongoose from 'mongoose';
 import Order from '../models/Order';
 import Payment from '../models/Payment';
 import Cart from '../models/Cart';
@@ -6,27 +8,32 @@ import Address from '../models/Address';
 import Product from '../models/Product';
 import User from '../models/User';
 import { ApiResponse } from '../utils/response';
-import { AuthenticatedRequest } from '../middleware/auth';
-import { createRazorpayOrder, verifyRazorpaySignature } from '../utils/razorpay';
-import { sendOrderConfirmationEmail } from '../utils/email';
+import { createCashfreeOrder, createCashfreeRefund, fetchCashfreeOrder, fetchCashfreeOrderPayments } from '../utils/cashfree';
+import { generateInvoiceHtml, InvoiceOrderData } from '../utils/invoiceGenerator';
+import {
+  sendOrderConfirmationEmail,
+  sendShippedEmail,
+  sendOutForDeliveryEmail,
+  sendDeliveredEmail,
+  sendCancelledEmail,
+  sendRefundCompletedEmail,
+} from '../utils/email';
 import logger from '../config/logger';
 import Joi from 'joi';
 import { awardLoyaltyPoints, reverseLoyaltyPoints } from '../services/loyaltyService';
-import { rewardReferrer } from '../services/referralService';
-import { razorpayInstance } from '../utils/razorpay';
 
 const createOrderSchema = Joi.object({
   addressId: Joi.string().required(),
-  paymentMethod: Joi.string().valid('razorpay', 'cod').required(),
+  paymentMethod: Joi.string().valid('cashfree', 'cod').required(),
   couponCode: Joi.string().trim().uppercase().optional(),
   discountAmount: Joi.number().min(0).optional().default(0),
+  items: Joi.array().items(Joi.object()).optional(),
 });
 
 const verifyPaymentSchema = Joi.object({
   orderId: Joi.string().required(),
-  razorpayPaymentId: Joi.string().required(),
-  razorpayOrderId: Joi.string().required(),
-  razorpaySignature: Joi.string().required(),
+  cashfreeOrderId: Joi.string().optional(),
+  cfPaymentId: Joi.string().optional(),
 });
 
 const updateOrderStatusSchema = Joi.object({
@@ -43,78 +50,206 @@ export const createOrder = async (req: any, res: Response) => {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }
 
-    const { addressId, paymentMethod, couponCode, discountAmount: rawDiscount } = value;
+    const { addressId, paymentMethod, couponCode, discountAmount: rawDiscount, items: reqItems } = value;
 
-    // Ensure discountAmount is a non-negative number (clamp to 0)
     const discountAmount = Math.max(0, Number(rawDiscount) || 0);
 
     // Get user's cart
-    const cart = await Cart.findOne({ userId: req.user?.userId }).populate('items.productId');
-    if (!cart || cart.items.length === 0) {
-      return res.status(400).json(new ApiResponse(false, 'Cart is empty', null, 400));
+    let cart = await Cart.findOne({ userId: req.user?.userId }).populate('items.productId');
+
+    // Auto-sync cart from request body items if DB cart is empty
+    if ((!cart || cart.items.length === 0) && Array.isArray(reqItems) && reqItems.length > 0) {
+      const syncedItems = [];
+      for (const reqItem of reqItems) {
+        const rawId = reqItem.productId || reqItem._id || reqItem.id;
+        const cleanId = typeof rawId === 'string' && rawId.includes('-') ? rawId.split('-')[0] : rawId;
+        if (cleanId && mongoose.Types.ObjectId.isValid(cleanId)) {
+          syncedItems.push({
+            productId: new mongoose.Types.ObjectId(cleanId),
+            quantity: reqItem.quantity || 1,
+            price: reqItem.price || 100,
+            weight: reqItem.weight || '100g',
+          });
+        }
+      }
+      if (syncedItems.length > 0) {
+        cart = await Cart.findOneAndUpdate(
+          { userId: req.user?.userId },
+          { items: syncedItems },
+          { upsert: true, new: true }
+        ).populate('items.productId');
+      }
     }
 
-    // Get address
+    if (!cart || cart.items.length === 0) {
+      return res.status(400).json(new ApiResponse(false, 'Cart is empty. Add items to cart before placing an order.', null, 400));
+    }
+
+    cart.items = cart.items.filter((item: any) => item.productId != null);
+    if (cart.items.length === 0) {
+      return res.status(400).json(new ApiResponse(false, 'Cart items are invalid or unavailable', null, 400));
+    }
+
     const address = await Address.findById(addressId);
     if (!address) {
       return res.status(404).json(new ApiResponse(false, 'Address not found', null, 404));
     }
 
-    // Calculate total and prepare order items
+    // Pre-check stock for all items
+    for (const item of cart.items) {
+      const prod = item.productId as any;
+      const product = await Product.findById(prod._id);
+      if (!product) {
+        return res.status(400).json(new ApiResponse(false, `Product "${prod?.name || 'Unknown'}" not found`, null, 400));
+      }
+
+      const variant = product.variants.find((v: any) => v.weight === item.weight);
+      const liveStock = variant ? variant.stock : product.stock;
+
+      if (liveStock < item.quantity) {
+        return res.status(400).json(
+          new ApiResponse(
+            false,
+            `Product "${prod.name}" (${item.weight || 'base'}) has insufficient stock. Available: ${liveStock}, Required: ${item.quantity}`,
+            null,
+            400
+          )
+        );
+      }
+    }
+
     let itemsTotal = 0;
     const orderItems = cart.items.map((item: any) => {
       const itemTotal = item.price * item.quantity;
       itemsTotal += itemTotal;
+      const prod = item.productId as any;
       return {
-        productId: item.productId._id,
-        name: item.productId.name,
+        productId: prod._id,
+        name: prod.name,
         price: item.price,
         quantity: item.quantity,
-        image: item.productId.image,
+        image: prod.image,
+        weight: item.weight,
       };
     });
 
-    // Req 32.2, 32.3 — apply discount; totalAmount is clamped to ≥ 0
     const totalAmount = Math.max(0, itemsTotal - discountAmount);
+    const orderNumber = `ORD-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
-    // Generate order number
-    const orderNumber = `ORD-${Date.now()}`;
+    let order;
+    try {
+      order = await Order.create({
+        userId: req.user?.userId,
+        orderNumber,
+        items: orderItems,
+        totalAmount,
+        ...(couponCode ? { couponCode } : {}),
+        ...(discountAmount > 0 ? { discountAmount } : {}),
+        shippingAddress: {
+          name: address.name,
+          addressLine1: address.addressLine1,
+          addressLine2: address.addressLine2,
+          city: address.city,
+          state: address.state,
+          pincode: address.pincode,
+          phone: address.phone,
+        },
+        paymentMethod,
+        paymentStatus: 'pending',
+        orderstatus: 'pending',
+      });
+    } catch (createError: any) {
+      if (createError.code === 11000) {
+        return res.status(409).json(new ApiResponse(false, 'Order number collision', null, 409));
+      }
+      throw createError;
+    }
 
-    // Create order
-    const order = await Order.create({
-      userId: req.user?.userId,
-      orderNumber,
-      items: orderItems,
-      totalAmount,
-      ...(couponCode ? { couponCode } : {}),
-      ...(discountAmount > 0 ? { discountAmount } : {}),
-      shippingAddress: {
-        name: address.name,
-        addressLine1: address.addressLine1,
-        addressLine2: address.addressLine2,
-        city: address.city,
-        state: address.state,
-        pincode: address.pincode,
-        phone: address.phone,
-      },
-      paymentMethod,
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
-      orderstatus: 'pending',
-    });
+    let cashfreeOrder: any = null;
+    if (paymentMethod === 'cashfree') {
+      try {
+        const userDoc = await User.findById(req.user?.userId).select('name email phone');
+        cashfreeOrder = await createCashfreeOrder(totalAmount, order._id.toString(), {
+          customerId: req.user?.userId || order._id.toString(),
+          customerName: address.name || userDoc?.name || 'Customer',
+          customerEmail: userDoc?.email || 'customer@matasreesuper.com',
+          customerPhone: address.phone || userDoc?.phone || '9999999999',
+        });
 
-    // Create payment record
-    let razorpayOrder: any = null;
-    if (paymentMethod === 'razorpay') {
-      razorpayOrder = await createRazorpayOrder(totalAmount, order._id.toString());
+        order.cashfreeOrderId = cashfreeOrder.order_id;
+        order.paymentSessionId = cashfreeOrder.payment_session_id;
+        await order.save();
+      } catch (cashfreeError: any) {
+        await Order.findByIdAndDelete(order._id);
+        const msg = cashfreeError.message || 'Cashfree payment gateway error';
+        return res.status(503).json(new ApiResponse(false, msg, null, 503));
+      }
 
       await Payment.create({
         orderId: order._id,
         userId: req.user?.userId,
         amount: totalAmount,
         status: 'pending',
-        method: 'razorpay',
-        razorpayOrderId: razorpayOrder.id,
+        method: 'cashfree',
+        cashfreeOrderId: cashfreeOrder.order_id,
+        rawGatewayResponse: cashfreeOrder,
       });
+
+      // Atomic stock decrement for Cashfree orders
+      const decrementedItems: Array<{ productId: any; quantity: number; weight?: string }> = [];
+      let rollbackNeeded = false;
+      let failedItemName = '';
+
+      for (const item of orderItems) {
+        const hasVariant = await Product.findOne({ _id: item.productId, "variants.weight": item.weight });
+        let updatedProduct;
+        if (hasVariant) {
+          updatedProduct = await Product.findOneAndUpdate(
+            { _id: item.productId, "variants.weight": item.weight, "variants.stock": { $gte: item.quantity } },
+            { $inc: { "variants.$.stock": -item.quantity, sold: item.quantity } },
+            { new: true }
+          );
+        } else {
+          updatedProduct = await Product.findOneAndUpdate(
+            { _id: item.productId, stock: { $gte: item.quantity } },
+            { $inc: { stock: -item.quantity, sold: item.quantity } },
+            { new: true }
+          );
+        }
+
+        if (!updatedProduct) {
+          rollbackNeeded = true;
+          failedItemName = item.name;
+          break;
+        }
+        decrementedItems.push({ productId: item.productId, quantity: item.quantity, weight: item.weight });
+      }
+
+      if (rollbackNeeded) {
+        for (const decItem of decrementedItems) {
+          if (decItem.weight) {
+            const hasVariant = await Product.findOne({ _id: decItem.productId, "variants.weight": decItem.weight });
+            if (hasVariant) {
+              await Product.findOneAndUpdate(
+                { _id: decItem.productId, "variants.weight": decItem.weight },
+                { $inc: { "variants.$.stock": decItem.quantity, sold: -decItem.quantity } }
+              );
+              continue;
+            }
+          }
+          await Product.findByIdAndUpdate(decItem.productId, {
+            $inc: { stock: decItem.quantity, sold: -decItem.quantity }
+          });
+        }
+        await Order.findByIdAndDelete(order._id);
+        await Payment.deleteOne({ orderId: order._id });
+
+        return res.status(400).json(
+          new ApiResponse(false, `Product "${failedItemName}" is out of stock`, null, 400)
+        );
+      }
+
+      await Order.findByIdAndUpdate(order._id, { stockReservedAt: new Date() });
     } else {
       await Payment.create({
         orderId: order._id,
@@ -123,19 +258,63 @@ export const createOrder = async (req: any, res: Response) => {
         status: 'pending',
         method: 'cod',
       });
+
+      const decrementedItemsCOD: Array<{ productId: any; quantity: number; weight?: string }> = [];
+      let rollbackNeededCOD = false;
+      let failedItemNameCOD = '';
+
+      for (const item of orderItems) {
+        const hasVariant = await Product.findOne({ _id: item.productId, "variants.weight": item.weight });
+        let updatedProduct;
+        if (hasVariant) {
+          updatedProduct = await Product.findOneAndUpdate(
+            { _id: item.productId, "variants.weight": item.weight, "variants.stock": { $gte: item.quantity } },
+            { $inc: { "variants.$.stock": -item.quantity, sold: item.quantity } },
+            { new: true }
+          );
+        } else {
+          updatedProduct = await Product.findOneAndUpdate(
+            { _id: item.productId, stock: { $gte: item.quantity } },
+            { $inc: { stock: -item.quantity, sold: item.quantity } },
+            { new: true }
+          );
+        }
+
+        if (!updatedProduct) {
+          rollbackNeededCOD = true;
+          failedItemNameCOD = item.name;
+          break;
+        }
+        decrementedItemsCOD.push({ productId: item.productId, quantity: item.quantity, weight: item.weight });
+      }
+
+      if (rollbackNeededCOD) {
+        for (const decItem of decrementedItemsCOD) {
+          if (decItem.weight) {
+            const hasVariant = await Product.findOne({ _id: decItem.productId, "variants.weight": decItem.weight });
+            if (hasVariant) {
+              await Product.findOneAndUpdate(
+                { _id: decItem.productId, "variants.weight": decItem.weight },
+                { $inc: { "variants.$.stock": decItem.quantity, sold: -decItem.quantity } }
+              );
+              continue;
+            }
+          }
+          await Product.findByIdAndUpdate(decItem.productId, {
+            $inc: { stock: decItem.quantity, sold: -decItem.quantity }
+          });
+        }
+        await Order.findByIdAndDelete(order._id);
+        await Payment.deleteOne({ orderId: order._id });
+
+        return res.status(400).json(
+          new ApiResponse(false, `Product "${failedItemNameCOD}" is out of stock`, null, 400)
+        );
+      }
     }
 
-    // Update product sold count and stock
-    for (const item of orderItems) {
-      await Product.findByIdAndUpdate(item.productId, {
-        $inc: { sold: item.quantity, stock: -item.quantity }
-      });
-    }
-
-    // Clear cart
     await Cart.findOneAndUpdate({ userId: req.user?.userId }, { items: [] });
 
-    // Send order confirmation email for COD orders
     if (paymentMethod === 'cod') {
       try {
         const userDoc = await User.findById(req.user?.userId).select('email');
@@ -167,7 +346,8 @@ export const createOrder = async (req: any, res: Response) => {
     return res.status(201).json(
       new ApiResponse(true, 'Order created', {
         order,
-        razorpayOrder: paymentMethod === 'razorpay' ? razorpayOrder : null,
+        paymentSessionId: cashfreeOrder?.payment_session_id || null,
+        cashfreeOrderId: cashfreeOrder?.order_id || null,
       })
     );
   } catch (error: any) {
@@ -176,7 +356,7 @@ export const createOrder = async (req: any, res: Response) => {
 };
 
 /**
- * Verify Razorpay payment
+ * Verify Cashfree payment status
  */
 export const verifyPayment = async (req: any, res: Response) => {
   try {
@@ -185,68 +365,74 @@ export const verifyPayment = async (req: any, res: Response) => {
       return res.status(400).json(new ApiResponse(false, error.details[0].message, null, 400));
     }
 
-    const { orderId, razorpayPaymentId, razorpayOrderId, razorpaySignature } = value;
+    const { orderId, cashfreeOrderId, cfPaymentId } = value;
 
-    // Verify signature
-    const isSignatureValid = verifyRazorpaySignature(
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature
-    );
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
+    }
 
-    if (!isSignatureValid) {
-      return res.status(400).json(new ApiResponse(false, 'Invalid payment signature', null, 400));
+    const targetCfOrderId = cashfreeOrderId || order.cashfreeOrderId || order.orderNumber.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+    const cfOrder = await fetchCashfreeOrder(targetCfOrderId);
+
+    if (cfOrder?.order_status !== 'PAID') {
+      // Check payments if status is pending
+      const payments = await fetchCashfreeOrderPayments(targetCfOrderId);
+      const successfulPayment = Array.isArray(payments) ? payments.find((p: any) => p.payment_status === 'SUCCESS') : null;
+
+      if (!successfulPayment) {
+        return res.status(400).json(new ApiResponse(false, 'Cashfree payment not completed yet', null, 400));
+      }
     }
 
     // Update order and payment
-    const order = await Order.findByIdAndUpdate(
-      orderId,
-      { paymentStatus: 'paid', orderstatus: 'confirmed' },
-      { new: true }
-    );
+    order.paymentStatus = 'paid';
+    order.orderstatus = 'confirmed';
+    order.stockReservedAt = null;
+    if (cfPaymentId) {
+      order.cashfreePaymentId = cfPaymentId;
+    }
+    await order.save();
 
     await Payment.findOneAndUpdate(
-      { orderId },
+      { orderId: order._id },
       {
         status: 'success',
-        razorpayPaymentId,
-        razorpaySignature,
+        cashfreePaymentId: cfPaymentId || order.cashfreePaymentId,
+        cashfreeOrderId: targetCfOrderId,
+        rawGatewayResponse: cfOrder,
       },
-      { new: true }
+      { upsert: true, new: true }
     );
 
-    // Send order confirmation email for online payment
+    // Send order confirmation email
     try {
-      if (order) {
-        const userDoc = await User.findById(order.userId).select('email');
-        if (userDoc?.email) {
-          await sendOrderConfirmationEmail(
-            {
-              orderNumber: (order as any).orderNumber,
-              items: (order as any).items.map((item: any) => ({ name: item.name, quantity: item.quantity, price: item.price })),
-              totalAmount: (order as any).totalAmount,
-              shippingAddress: {
-                fullName: (order as any).shippingAddress?.name || '',
-                addressLine1: (order as any).shippingAddress?.addressLine1 || '',
-                ...((order as any).shippingAddress?.addressLine2 ? { addressLine2: (order as any).shippingAddress.addressLine2 } : {}),
-                city: (order as any).shippingAddress?.city || '',
-                state: (order as any).shippingAddress?.state || '',
-                pincode: (order as any).shippingAddress?.pincode || '',
-                phone: (order as any).shippingAddress?.phone || '',
-              },
-              paymentMethod: 'razorpay',
+      const userDoc = await User.findById(order.userId).select('email');
+      if (userDoc?.email) {
+        await sendOrderConfirmationEmail(
+          {
+            orderNumber: order.orderNumber,
+            items: order.items.map((item: any) => ({ name: item.name, quantity: item.quantity, price: item.price })),
+            totalAmount: order.totalAmount,
+            shippingAddress: {
+              fullName: order.shippingAddress?.name || '',
+              addressLine1: order.shippingAddress?.addressLine1 || '',
+              ...(order.shippingAddress?.addressLine2 ? { addressLine2: order.shippingAddress.addressLine2 } : {}),
+              city: order.shippingAddress?.city || '',
+              state: order.shippingAddress?.state || '',
+              pincode: order.shippingAddress?.pincode || '',
+              phone: order.shippingAddress?.phone || '',
             },
-            userDoc.email
-          );
-        }
+            paymentMethod: 'cashfree',
+          },
+          userDoc.email
+        );
       }
     } catch (emailError) {
-      logger.warn('Failed to send order confirmation email for Razorpay order:', emailError);
+      logger.warn('Failed to send order confirmation email for Cashfree order:', emailError);
     }
 
-    // Award loyalty points for the confirmed payment (Req 10.1)
-    // Only award if points have not already been awarded for this order
-    if (order && !order.loyaltyPointsEarned) {
+    if (!order.loyaltyPointsEarned) {
       try {
         const subtotalPaid =
           (order.totalAmount || 0) -
@@ -284,10 +470,7 @@ export const getOrders = async (req: any, res: Response) => {
  */
 export const getOrderById = async (req: any, res: Response) => {
   try {
-    const order = await Order.findOne({
-      _id: req.params.id,
-      userId: req.user?.userId,
-    });
+    const order = await Order.findById(req.params.id);
 
     if (!order) {
       return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
@@ -301,11 +484,9 @@ export const getOrderById = async (req: any, res: Response) => {
 
 /**
  * Cancel an order (Customer)
- * Requirements: 31.1, 31.2, 31.3, 31.4, 31.5, 31.6
  */
 export const cancelOrder = async (req: any, res: Response) => {
   try {
-    // Find order belonging to the authenticated user (enforces ownership — 404 if not found or not owner)
     const order = await Order.findOne({
       _id: req.params.id,
       userId: req.user?.userId,
@@ -315,25 +496,42 @@ export const cancelOrder = async (req: any, res: Response) => {
       return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
     }
 
-    // Only pending or confirmed orders can be cancelled (Req 31.1)
     if (!['pending', 'confirmed'].includes(order.orderstatus)) {
       return res.status(400).json(
         new ApiResponse(false, 'Order cannot be cancelled at this stage', null, 400)
       );
     }
 
-    // Set order status to cancelled (Req 31.2)
     order.orderstatus = 'cancelled';
+    order.stockReservedAt = null;
     await order.save();
 
-    // Restore stock for each item (Req 31.3)
+    try {
+      const userDoc = await User.findById(order.userId).select('email');
+      if (userDoc?.email) {
+        const refundAmount = order.paymentStatus === 'paid' ? order.totalAmount : 0;
+        await sendCancelledEmail(order.orderNumber, userDoc.email, refundAmount);
+      }
+    } catch (emailError: any) {
+      logger.warn(`Failed to send order cancellation email for order ${order._id}:`, emailError.message);
+    }
+
     for (const item of order.items) {
+      if (item.weight) {
+        const hasVariant = await Product.findOne({ _id: item.productId, "variants.weight": item.weight });
+        if (hasVariant) {
+          await Product.findOneAndUpdate(
+            { _id: item.productId, "variants.weight": item.weight },
+            { $inc: { "variants.$.stock": item.quantity } }
+          );
+          continue;
+        }
+      }
       await Product.findByIdAndUpdate(item.productId, {
         $inc: { stock: item.quantity },
       });
     }
 
-    // Reverse loyalty points if any were earned for this order (Req 31.4)
     if (order.loyaltyPointsEarned && order.loyaltyPointsEarned > 0) {
       try {
         await reverseLoyaltyPoints(order._id, order.userId);
@@ -345,19 +543,21 @@ export const cancelOrder = async (req: any, res: Response) => {
       }
     }
 
-    // Initiate Razorpay refund if payment was made via Razorpay and is paid (Req 31.5, 31.6)
-    if (order.paymentMethod === 'razorpay' && order.paymentStatus === 'paid') {
+    // Initiate Cashfree refund if payment was made online and is paid
+    if ((order.paymentMethod === 'cashfree' || order.paymentMethod === 'razorpay') && order.paymentStatus === 'paid') {
       try {
-        const payment = await Payment.findOne({ orderId: order._id });
-        if (payment?.razorpayPaymentId) {
-          await razorpayInstance.payments.refund(payment.razorpayPaymentId, {
-            amount: Math.round(order.totalAmount * 100), // paise
-          });
-          await Payment.findByIdAndUpdate(payment._id, { status: 'refund_initiated' });
-        }
+        const refundId = `ref_cancel_${order._id.toString()}_${Date.now()}`;
+        const cfOrderId = order.cashfreeOrderId || order._id.toString().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+        await createCashfreeRefund(cfOrderId, refundId, order.totalAmount, 'Customer cancelled order');
+        
+        order.refundIds = order.refundIds || [];
+        order.refundIds.push(refundId);
+        await order.save();
+
+        await Payment.findOneAndUpdate({ orderId: order._id }, { status: 'refund_initiated' });
       } catch (refundError) {
         logger.warn(
-          `[orderController] cancelOrder: Failed to initiate Razorpay refund for order ${order._id}:`,
+          `[orderController] cancelOrder: Failed to initiate Cashfree refund for order ${order._id}:`,
           refundError
         );
       }
@@ -419,7 +619,6 @@ export const updateOrderStatus = async (req: any, res: Response) => {
 
     const { orderstatus } = value;
 
-    // Fetch the existing order first so we can check paymentMethod and current state
     const existingOrder = await Order.findById(req.params.id);
     if (!existingOrder) {
       return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
@@ -435,9 +634,32 @@ export const updateOrderStatus = async (req: any, res: Response) => {
       return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
     }
 
-    // Award loyalty points when a COD order is delivered (Req 10.1)
-    // Only award if the status is transitioning to 'delivered', the order is COD,
-    // and points have not already been awarded for this order
+    try {
+      const userDoc = await User.findById(order.userId).select('email');
+      if (userDoc?.email) {
+        if (orderstatus === 'shipped') {
+          const estDate = new Date();
+          estDate.setDate(estDate.getDate() + 4);
+          const estString = estDate.toLocaleDateString('en-IN', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
+          await sendShippedEmail(order.orderNumber, userDoc.email, estString, order.shippingAddress);
+        } else if (orderstatus === 'out_for_delivery' || orderstatus === 'out for delivery') {
+          await sendOutForDeliveryEmail(order.orderNumber, userDoc.email, order.shippingAddress);
+        } else if (orderstatus === 'delivered') {
+          await sendDeliveredEmail(order.orderNumber, userDoc.email);
+        } else if (orderstatus === 'cancelled') {
+          const refundAmount = order.paymentStatus === 'paid' ? order.totalAmount : 0;
+          await sendCancelledEmail(order.orderNumber, userDoc.email, refundAmount);
+        }
+      }
+    } catch (emailError: any) {
+      logger.warn(`[orderController] Failed to send status email for order ${order._id}:`, emailError.message);
+    }
+
     if (
       orderstatus === 'delivered' &&
       existingOrder.paymentMethod === 'cod' &&
@@ -457,5 +679,99 @@ export const updateOrderStatus = async (req: any, res: Response) => {
     return res.status(200).json(new ApiResponse(true, 'Order status updated', order));
   } catch (error: any) {
     return res.status(500).json(new ApiResponse(false, error.message || 'Failed to update order', null, 500));
+  }
+};
+
+/**
+ * Download GST Tax Invoice HTML
+ */
+export const downloadInvoice = async (req: any, res: Response) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
+    }
+
+    if (req.user && req.user.role !== 'admin' && order.userId.toString() !== req.user.userId) {
+      return res.status(403).json(new ApiResponse(false, 'Unauthorized to view this invoice', null, 403));
+    }
+
+    const invoiceData: InvoiceOrderData = {
+      orderNumber: order.orderNumber,
+      invoiceNumber: `INV-${order.orderNumber}`,
+      invoiceDate: order.createdAt || new Date(),
+      items: order.items.map((item: any) => ({
+        name: item.name,
+        variant: item.weight,
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      subtotal: (order.totalAmount || 0) + (order.discountAmount || 0) - (order.shippingCharge || 0),
+      shippingCharge: order.shippingCharge || 0,
+      discountAmount: order.discountAmount || 0,
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      shippingAddress: {
+        fullName: order.shippingAddress?.name || order.shippingAddress?.fullName || 'Valued Customer',
+        addressLine1: order.shippingAddress?.addressLine1 || '',
+        addressLine2: order.shippingAddress?.addressLine2 || '',
+        city: order.shippingAddress?.city || '',
+        state: order.shippingAddress?.state || '',
+        pincode: order.shippingAddress?.pincode || '',
+        phone: order.shippingAddress?.phone || '',
+      },
+    };
+
+    const html = generateInvoiceHtml(invoiceData);
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Disposition', `inline; filename="Invoice-${order.orderNumber}.html"`);
+    return res.status(200).send(html);
+  } catch (error: any) {
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to generate invoice', null, 500));
+  }
+};
+
+/**
+ * Process Cashfree Refund (Admin)
+ */
+export const processRefund = async (req: any, res: Response) => {
+  try {
+    const { orderId, amount, reason } = req.body;
+    const targetOrderId = orderId || req.params.id;
+    const order = await Order.findById(targetOrderId);
+    if (!order) {
+      return res.status(404).json(new ApiResponse(false, 'Order not found', null, 404));
+    }
+
+    const cfOrderId = order.cashfreeOrderId || order._id.toString().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+    const refundId = `ref_admin_${order._id.toString()}_${Date.now()}`;
+    const refundAmount = amount || order.totalAmount;
+
+    const cfRefund = await createCashfreeRefund(cfOrderId, refundId, refundAmount, reason || 'Admin initiated refund');
+
+    order.paymentStatus = 'refunded';
+    order.orderstatus = 'refunded';
+    order.refundIds = order.refundIds || [];
+    order.refundIds.push(refundId);
+    await order.save();
+
+    await Payment.findOneAndUpdate(
+      { orderId: order._id },
+      {
+        status: 'refunded',
+      }
+    );
+
+    const userDoc = await User.findById(order.userId).select('email');
+    if (userDoc?.email) {
+      sendRefundCompletedEmail(order.orderNumber, userDoc.email, refundAmount, refundId).catch((e) =>
+        logger.warn('Failed to send refund completion email:', e)
+      );
+    }
+
+    return res.status(200).json(new ApiResponse(true, 'Cashfree refund processed successfully', { refund: cfRefund, refundId, order }));
+  } catch (error: any) {
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to process Cashfree refund', null, 500));
   }
 };

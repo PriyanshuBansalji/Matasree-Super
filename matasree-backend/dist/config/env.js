@@ -39,14 +39,23 @@ const envSchema = zod_1.z.object({
     CLOUDINARY_CLOUD_NAME: zod_1.z.string().optional(),
     CLOUDINARY_API_KEY: zod_1.z.string().optional(),
     CLOUDINARY_API_SECRET: zod_1.z.string().optional(),
-    // Email
-    EMAIL_SERVICE: zod_1.z.string().default('gmail'),
+    // Email Configuration
+    SMTP_HOST: zod_1.z.string().optional(),
+    SMTP_PORT: zod_1.z.string().default('587'),
+    SMTP_SECURE: zod_1.z.string().default('false'),
+    SMTP_USER: zod_1.z.string().optional(),
+    SMTP_PASS: zod_1.z.string().optional(),
+    MAIL_FROM_NAME: zod_1.z.string().default('Matasree Super'),
+    MAIL_FROM_ADDRESS: zod_1.z.string().default('admin@matasreesuper.com'),
+    REPLY_TO_ADDRESS: zod_1.z.string().default('admin@matasreesuper.com'),
+    EMAIL_SERVICE: zod_1.z.string().default('smtp'),
     EMAIL_USER: zod_1.z.string().optional(),
     EMAIL_PASSWORD: zod_1.z.string().optional(),
-    ADMIN_EMAIL: zod_1.z.string().optional(),
+    ADMIN_EMAIL: zod_1.z.string().default('admin@matasreesuper.com'),
     // Payment
     RAZORPAY_KEY_ID: zod_1.z.string().optional(),
     RAZORPAY_KEY_SECRET: zod_1.z.string().optional(),
+    RAZORPAY_WEBHOOK_SECRET: zod_1.z.string().optional(),
     // SMS (Twilio)
     TWILIO_ACCOUNT_SID: zod_1.z.string().optional(),
     TWILIO_AUTH_TOKEN: zod_1.z.string().optional(),

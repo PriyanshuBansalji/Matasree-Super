@@ -3,6 +3,7 @@ export interface ICartItem {
     productId: mongoose.Types.ObjectId;
     quantity: number;
     price: number;
+    weight: string;
     addedAt: Date;
 }
 export interface ICart {

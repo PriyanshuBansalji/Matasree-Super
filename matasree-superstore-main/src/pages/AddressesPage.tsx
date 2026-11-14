@@ -122,7 +122,7 @@ const AddressesPage = () => {
         toast.success('Address updated successfully!');
       } else {
         await addAddressMutation.mutateAsync(payload);
-        toast.success('Address added successfully! 🎉');
+        toast.success('Address added successfully!');
       }
 
       setShowForm(false);

@@ -104,12 +104,13 @@ describe('OAuth Token Delivery (Req 29)', () => {
             password: 'password123'
         });
         const accessToken = registerRes.body.data.accessToken;
+        const cookies = registerRes.headers['set-cookie'];
         // Try to get OAuth token even though no OAuth flow is in flight
         // Should return 401 because no token is stored in oauthTokenStore
         const res = await (0, supertest_1.default)(server_1.default)
             .get('/api/auth/token')
             .set('Authorization', `Bearer ${accessToken}`)
-            .set('Cookie', registerRes.headers['set-cookie'] || []);
+            .set('Cookie', Array.isArray(cookies) ? cookies[0] : '');
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
         expect(res.body.message).toContain('No token available');

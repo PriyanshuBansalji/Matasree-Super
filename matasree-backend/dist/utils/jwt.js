@@ -7,29 +7,26 @@ exports.verifyRefreshToken = exports.verifyAccessToken = exports.generateRefresh
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const crypto_1 = __importDefault(require("crypto"));
 const generateAccessToken = (userId, email, role) => {
-    const secret = (process.env.JWT_SECRET || 'default_secret');
-    const options = {
-        expiresIn: (process.env.JWT_EXPIRE || '7d'),
-    };
-    return jsonwebtoken_1.default.sign({ userId, email, role }, secret, options);
+    const secret = process.env.JWT_SECRET || 'default_secret';
+    const expire = process.env.JWT_EXPIRE || '7d';
+    // Cast to bypass strict StringValue type — runtime value is valid
+    return jsonwebtoken_1.default.sign({ userId, email, role }, secret, { expiresIn: expire });
 };
 exports.generateAccessToken = generateAccessToken;
 const generateRefreshToken = (userId) => {
-    const secret = (process.env.JWT_REFRESH_SECRET || 'default_refresh_secret');
-    const options = {
-        expiresIn: (process.env.JWT_REFRESH_EXPIRE || '30d'),
-    };
+    const secret = process.env.JWT_REFRESH_SECRET || 'default_refresh_secret';
+    const expire = process.env.JWT_REFRESH_EXPIRE || '30d';
     const jti = crypto_1.default.randomBytes(16).toString('hex');
-    return jsonwebtoken_1.default.sign({ userId, jti }, secret, options);
+    return jsonwebtoken_1.default.sign({ userId, jti }, secret, { expiresIn: expire });
 };
 exports.generateRefreshToken = generateRefreshToken;
 const verifyAccessToken = (token) => {
-    const secret = (process.env.JWT_SECRET || 'default_secret');
+    const secret = process.env.JWT_SECRET || 'default_secret';
     return jsonwebtoken_1.default.verify(token, secret);
 };
 exports.verifyAccessToken = verifyAccessToken;
 const verifyRefreshToken = (token) => {
-    const secret = (process.env.JWT_REFRESH_SECRET || 'default_refresh_secret');
+    const secret = process.env.JWT_REFRESH_SECRET || 'default_refresh_secret';
     return jsonwebtoken_1.default.verify(token, secret);
 };
 exports.verifyRefreshToken = verifyRefreshToken;

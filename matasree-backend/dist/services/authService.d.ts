@@ -40,6 +40,7 @@ export declare const rotateRefreshToken: (oldRefreshToken: string, res: Response
         email: string;
         role: "customer" | "admin";
         avatar: string | undefined;
+        isAdmin: boolean;
     };
 }>;
 /**

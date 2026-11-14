@@ -15,7 +15,7 @@ import mongoose from 'mongoose';
 import Joi from 'joi';
 import User from '../models/User';
 import Referral from '../models/Referral';
-import { applyReferralCode } from '../services/referralService';
+import { applyReferralCode, generateReferralCode } from '../services/referralService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { ApiResponse } from '../utils/response';
 import logger from '../config/logger';
@@ -52,8 +52,15 @@ export const getMyCode = async (req: AuthenticatedRequest, res: Response): Promi
       return res.status(404).json(new ApiResponse(false, 'User not found', null, 404));
     }
 
+    // Auto-generate a code if this user doesn't have one yet
+    // (covers users who registered before the referral system was added)
+    let code = user.referralCode ?? null;
+    if (!code) {
+      code = await generateReferralCode(userId);
+    }
+
     return res.status(200).json(
-      new ApiResponse(true, 'Referral code fetched', { referralCode: user.referralCode ?? null })
+      new ApiResponse(true, 'Referral code fetched', { referralCode: code })
     );
   } catch (error: any) {
     logger.error('[referralController] getMyCode error:', error);

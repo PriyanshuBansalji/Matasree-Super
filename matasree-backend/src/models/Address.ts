@@ -2,7 +2,7 @@ import mongoose, { Schema } from 'mongoose';
 
 export interface IAddress {
   _id: mongoose.Types.ObjectId;
-  userId: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId | string;
   name: string;
   phone: string;
   addressLine1: string;

@@ -11,9 +11,9 @@
  * Requirements: 18.5, 31.7, 32.4
  */
 
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, MapPin, Calendar, Package } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Package, Phone, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,9 @@ import { Separator } from '@/components/ui/separator';
 import { useOrder } from '@/hooks/useApi';
 import OrderTimeline, { type OrderStatus } from '@/components/OrderTimeline';
 import PageHelmet from '@/components/PageHelmet';
+import { useCartStore } from '@/store/cartStore';
+import type { Product } from '@/types';
+import { toast } from 'sonner';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -80,14 +83,46 @@ const OrderDetailPage = () => {
   const queryClient = useQueryClient();
 
   const { data: orderResponse, isLoading, isError, error } = useOrder(id ?? '');
+  const addItem = useCartStore((s) => s.addItem);
+  const toggleCart = useCartStore((s) => s.toggleCart);
 
-  // The API wraps the order in { data: { data: order } }
-  // Inspect the raw shape from the api interceptor (which returns response.data)
-  const order = (orderResponse as any)?.data ?? (orderResponse as any);
+  // Hardened three-level unwrap chain:
+  //   1st term: future shape { success, data: { order: IOrder } }
+  //   2nd term: current shape { success, data: IOrder }
+  //   3rd term: bare response fallback
+  const order = (orderResponse as any)?.data?.order ?? (orderResponse as any)?.data ?? (orderResponse as any);
 
   const handleCancelSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['order', id] });
     queryClient.invalidateQueries({ queryKey: ['my-orders'] });
+  };
+
+  const handleReorder = () => {
+    if (!items || items.length === 0) {
+      toast.error('No items to reorder.');
+      return;
+    }
+
+    items.forEach((item: any) => {
+      const product: Product = {
+        _id: item.productId,
+        id: item.productId,
+        name: item.name,
+        price: Number(item.price) || 0,
+        image: item.image || '',
+        description: item.description || '',
+        category: item.category || '',
+        rating: item.rating || 5,
+        reviews: item.reviews || 0,
+        inStock: true,
+        stock: 99,
+        weight: item.weight || '',
+      };
+      addItem(product);
+    });
+
+    toast.success('All items from this order have been added to your cart!');
+    toggleCart();
   };
 
   // ── Loading ─────────────────────────────────────────────────────────────────
@@ -187,7 +222,7 @@ const OrderDetailPage = () => {
         </Button>
 
         {/* ── Order header ──────────────────────────────────────────────────── */}
-        <Card className="mb-6">
+        <Card className="mb-6 card-ornate bg-white">
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -199,15 +234,26 @@ const OrderDetailPage = () => {
                   <span>{createdAt}</span>
                 </div>
               </div>
-              <Badge variant={paymentStatusVariant(paymentStatus)} className="text-sm">
-                Payment: {paymentStatusLabel(paymentStatus)}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReorder}
+                  className="flex items-center gap-1.5 border-[#3E2314]/15 hover:bg-[#D63220]/5 hover:border-[#D63220]/30"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-[#D63220]" />
+                  <span>Reorder</span>
+                </Button>
+                <Badge variant={paymentStatusVariant(paymentStatus)} className="text-sm">
+                  Payment: {paymentStatusLabel(paymentStatus)}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
         </Card>
 
         {/* ── Order timeline ─────────────────────────────────────────────────── */}
-        <Card className="mb-6">
+        <Card className="mb-6 card-ornate bg-white">
           <CardHeader>
             <CardTitle className="text-base">Order Status</CardTitle>
           </CardHeader>
@@ -215,7 +261,7 @@ const OrderDetailPage = () => {
             <OrderTimeline
               currentStatus={orderstatus}
               orderId={orderId}
-              couponCode={couponCode || undefined}
+              {...(couponCode ? { couponCode } : {})}
               discountAmount={discountAmount}
               onCancelSuccess={handleCancelSuccess}
             />
@@ -223,7 +269,7 @@ const OrderDetailPage = () => {
         </Card>
 
         {/* ── Order items ────────────────────────────────────────────────────── */}
-        <Card className="mb-6">
+        <Card className="mb-6 card-ornate bg-white">
           <CardHeader>
             <CardTitle className="text-base">Items Ordered</CardTitle>
           </CardHeader>
@@ -251,10 +297,22 @@ const OrderDetailPage = () => {
                     {/* Item details */}
                     <div className="flex flex-1 flex-wrap items-start justify-between gap-2">
                       <div>
-                        <p className="font-medium text-foreground">{item.name ?? '—'}</p>
-                        <p className="text-sm text-muted-foreground">
-                          ₹{(Number(item.price) || 0).toFixed(2)} × {item.quantity ?? 1}
-                        </p>
+                        <Link
+                          to={`/product/${item.productId}`}
+                          className="font-medium text-foreground hover:text-[#D63220] transition-colors"
+                        >
+                          {item.name ?? '—'}
+                        </Link>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-sm text-muted-foreground">
+                            ₹{(Number(item.price) || 0).toFixed(2)} × {item.quantity ?? 1}
+                          </p>
+                          {item.weight && (
+                            <span className="inline-block px-1.5 py-0.5 bg-[#D63220]/10 text-[#D63220] text-[10px] font-black rounded-full">
+                              {item.weight}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <p className="font-semibold text-foreground">
                         ₹{lineTotal.toFixed(2)}
@@ -269,7 +327,7 @@ const OrderDetailPage = () => {
 
         <div className="grid gap-6 md:grid-cols-2">
           {/* ── Order summary ────────────────────────────────────────────────── */}
-          <Card>
+          <Card className="card-ornate bg-white">
             <CardHeader>
               <CardTitle className="text-base">Order Summary</CardTitle>
             </CardHeader>
@@ -300,7 +358,7 @@ const OrderDetailPage = () => {
           </Card>
 
           {/* ── Shipping address ─────────────────────────────────────────────── */}
-          <Card>
+          <Card className="card-ornate bg-white">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -326,7 +384,7 @@ const OrderDetailPage = () => {
                 </p>
               )}
               {shippingAddress.phone && (
-                <p className="text-muted-foreground pt-1">📞 {shippingAddress.phone}</p>
+                <p className="text-muted-foreground pt-1 flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {shippingAddress.phone}</p>
               )}
             </CardContent>
           </Card>

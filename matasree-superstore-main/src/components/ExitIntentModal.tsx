@@ -246,7 +246,7 @@ const ExitIntentModal = ({
                 id="exit-intent-title"
                 className="font-serif text-2xl font-bold text-white mb-1"
               >
-                Wait! Don't leave yet 🎁
+                Wait! Don't leave yet
               </h2>
               <p
                 id="exit-intent-desc"

@@ -5,11 +5,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.uploadImage = exports.addToRecentlyViewed = exports.getRecentlyViewed = exports.searchProducts = exports.getFeaturedProducts = exports.deleteProduct = exports.updateProduct = exports.createProduct = exports.getProductById = exports.getProducts = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const Product_1 = __importDefault(require("../models/Product"));
 const Category_1 = __importDefault(require("../models/Category"));
 const User_1 = __importDefault(require("../models/User"));
 const response_1 = require("../utils/response");
+const cloudinary_1 = require("../config/cloudinary");
 const joi_1 = __importDefault(require("joi"));
+// ── Validation Schemas ──────────────────────────────────────────────────────
+const variantSchema = joi_1.default.object({
+    weight: joi_1.default.string().trim().required(),
+    price: joi_1.default.number().min(0).required(),
+    originalPrice: joi_1.default.number().min(0).optional(),
+    stock: joi_1.default.number().min(0).required(),
+});
 const productSchema = joi_1.default.object({
     name: joi_1.default.string().required().trim(),
     description: joi_1.default.string().required(),
@@ -18,11 +28,35 @@ const productSchema = joi_1.default.object({
     category: joi_1.default.string().required(),
     stock: joi_1.default.number().required().min(0),
     image: joi_1.default.string().required(),
-    weight: joi_1.default.string().valid('100g', '250g', '500g', '1kg', '2kg').required(),
-    tags: joi_1.default.array().items(joi_1.default.string()).optional(),
+    // weight is free-form now — no enum
+    weight: joi_1.default.string().trim().required(),
+    // Variants array — optional, defaults to []
+    variants: joi_1.default.array().items(variantSchema).optional().default([]),
+    // Tags for keyword search
+    tags: joi_1.default.array().items(joi_1.default.string().trim()).optional().default([]),
     isNew: joi_1.default.boolean().optional(),
     isBestseller: joi_1.default.boolean().optional(),
+    images: joi_1.default.array().items(joi_1.default.string()).optional().default([]),
 });
+// ── Helpers ─────────────────────────────────────────────────────────────────
+/**
+ * Find or create a category by name, returning the ObjectId.
+ */
+async function findOrCreateCategory(name) {
+    let category = await Category_1.default.findOne({ name });
+    if (!category) {
+        let baseSlug = name
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'category';
+        const slug = `${baseSlug}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+        category = await Category_1.default.create({ name, slug });
+    }
+    return category._id;
+}
+// ── Controllers ─────────────────────────────────────────────────────────────
 /**
  * Get all products with filtering and search
  */
@@ -31,26 +65,24 @@ const getProducts = async (req, res) => {
         const { search, category, minPrice, maxPrice, weight, minRating, inStock, page = 1, limit = 12, sort, } = req.query;
         let query = {};
         if (search) {
-            // Use regex for partial matching (more flexible than $text index)
+            // Search across name, description, and tags
             query.$or = [
                 { name: { $regex: search, $options: 'i' } },
                 { description: { $regex: search, $options: 'i' } },
                 { tags: { $regex: search, $options: 'i' } },
+                { weight: { $regex: search, $options: 'i' } },
+                // Also search within variant weights
+                { 'variants.weight': { $regex: search, $options: 'i' } },
             ];
         }
         if (category) {
-            // Support both ObjectId and category name
-            const mongoose = require('mongoose');
-            if (mongoose.Types.ObjectId.isValid(category)) {
+            if (mongoose_1.default.Types.ObjectId.isValid(category)) {
                 query.category = category;
             }
             else {
-                // Look up category by name
-                const Category = require('../models/Category').default;
-                const cat = await Category.findOne({ name: { $regex: new RegExp(`^${category}$`, 'i') } });
-                if (cat) {
+                const cat = await Category_1.default.findOne({ name: { $regex: new RegExp(`^${category}$`, 'i') } });
+                if (cat)
                     query.category = cat._id;
-                }
             }
         }
         if (minPrice || maxPrice) {
@@ -60,17 +92,23 @@ const getProducts = async (req, res) => {
             if (maxPrice)
                 query.price.$lte = parseFloat(maxPrice);
         }
-        // Weight filter — exact match against enum values: '100g', '250g', '500g', '1kg', '2kg'
+        // Weight filter — matches base weight OR any variant weight
         if (weight) {
-            query.weight = weight;
+            query.$or = [
+                ...(query.$or ?? []),
+                { weight },
+                { 'variants.weight': weight },
+            ];
         }
-        // minRating filter — products with rating >= minRating (Requirements: 2.1, 2.5)
         if (minRating) {
             query.rating = { $gte: parseFloat(minRating) };
         }
-        // inStock filter — only return products with stock > 0 (Requirements: 2.1, 2.7)
         if (inStock === 'true') {
             query.stock = { $gt: 0 };
+        }
+        // Default to 'active' products on public endpoint (Req 15.4)
+        if (!query.status) {
+            query.status = 'active';
         }
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const products = await Product_1.default.find(query)
@@ -82,7 +120,8 @@ const getProducts = async (req, res) => {
                 sort === '-price' ? { price: -1 } :
                     sort === 'price' ? { price: 1 } :
                         sort === '-rating' ? { rating: -1 } :
-                            { createdAt: -1 });
+                            { createdAt: -1 })
+            .lean();
         const total = await Product_1.default.countDocuments(query);
         res.status(200).json(new response_1.ApiResponse(true, 'Products fetched', {
             products,
@@ -104,7 +143,7 @@ exports.getProducts = getProducts;
  */
 const getProductById = async (req, res) => {
     try {
-        const product = await Product_1.default.findById(req.params.id).populate('category');
+        const product = await Product_1.default.findById(req.params.id).populate('category').lean();
         if (!product) {
             return res.status(404).json(new response_1.ApiResponse(false, 'Product not found', null, 404));
         }
@@ -120,36 +159,25 @@ exports.getProductById = getProductById;
  */
 const createProduct = async (req, res) => {
     try {
-        const { error, value } = productSchema.validate(req.body);
+        const { error, value } = productSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
         if (error) {
             return res.status(400).json(new response_1.ApiResponse(false, error.details[0].message, null, 400));
         }
-        // Find or create category
-        let category = await Category_1.default.findOne({ name: value.category });
-        if (!category) {
-            // Create slug from category name with proper sanitization and uniqueness
-            let baseSlug = value.category
-                .toLowerCase()
-                .trim()
-                .replace(/[^a-z0-9\s]/g, '')
-                .replace(/\s+/g, '-')
-                .replace(/^-+|-+$/g, '');
-            // Ensure slug is not empty and unique
-            if (!baseSlug) {
-                baseSlug = 'category';
-            }
-            // Add timestamp and random suffix for guaranteed uniqueness
-            const timestamp = Date.now();
-            const random = Math.floor(Math.random() * 10000);
-            const slug = `${baseSlug}-${timestamp}-${random}`.toLowerCase();
-            category = await Category_1.default.create({
-                name: value.category,
-                slug: slug,
-            });
-        }
+        const categoryId = await findOrCreateCategory(value.category);
         const productData = {
-            ...value,
-            category: category._id,
+            name: value.name,
+            description: value.description,
+            price: value.price,
+            originalPrice: value.originalPrice,
+            category: categoryId,
+            stock: value.stock,
+            image: value.image,
+            images: value.images ?? [],
+            weight: value.weight,
+            variants: value.variants ?? [],
+            tags: value.tags ?? [],
+            isNewProduct: value.isNew ?? false,
+            isBestseller: value.isBestseller ?? false,
         };
         const product = await Product_1.default.create(productData);
         const populatedProduct = await product.populate('category');
@@ -165,36 +193,25 @@ exports.createProduct = createProduct;
  */
 const updateProduct = async (req, res) => {
     try {
-        const { error, value } = productSchema.validate(req.body, { stripUnknown: true });
+        const { error, value } = productSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
         if (error) {
             return res.status(400).json(new response_1.ApiResponse(false, error.details[0].message, null, 400));
         }
-        // Find or create category
-        let category = await Category_1.default.findOne({ name: value.category });
-        if (!category) {
-            // Create slug from category name with proper sanitization and uniqueness
-            let baseSlug = value.category
-                .toLowerCase()
-                .trim()
-                .replace(/[^a-z0-9\s]/g, '')
-                .replace(/\s+/g, '-')
-                .replace(/^-+|-+$/g, '');
-            // Ensure slug is not empty and unique
-            if (!baseSlug) {
-                baseSlug = 'category';
-            }
-            // Add timestamp and random suffix for guaranteed uniqueness
-            const timestamp = Date.now();
-            const random = Math.floor(Math.random() * 10000);
-            const slug = `${baseSlug}-${timestamp}-${random}`.toLowerCase();
-            category = await Category_1.default.create({
-                name: value.category,
-                slug: slug,
-            });
-        }
+        const categoryId = await findOrCreateCategory(value.category);
         const updateData = {
-            ...value,
-            category: category._id,
+            name: value.name,
+            description: value.description,
+            price: value.price,
+            originalPrice: value.originalPrice,
+            category: categoryId,
+            stock: value.stock,
+            image: value.image,
+            images: value.images ?? [],
+            weight: value.weight,
+            variants: value.variants ?? [],
+            tags: value.tags ?? [],
+            isNewProduct: value.isNew ?? false,
+            isBestseller: value.isBestseller ?? false,
         };
         const product = await Product_1.default.findByIdAndUpdate(req.params.id, updateData, { new: true }).populate('category');
         if (!product) {
@@ -231,7 +248,8 @@ const getFeaturedProducts = async (req, res) => {
         const products = await Product_1.default.find({ $or: [{ isBestseller: true }, { isNewProduct: true }] })
             .populate('category')
             .limit(8)
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
         res.status(200).json(new response_1.ApiResponse(true, 'Featured products fetched', products));
     }
     catch (error) {
@@ -241,41 +259,47 @@ const getFeaturedProducts = async (req, res) => {
 exports.getFeaturedProducts = getFeaturedProducts;
 /**
  * Autocomplete search — GET /api/products/search?q=&limit=10
- * Requirements: 1.1, 1.2, 1.4, 1.6, 1.7
  */
 const searchProducts = async (req, res) => {
     try {
         const q = typeof req.query.q === 'string' ? req.query.q : '';
         const limitParam = req.query.limit;
-        // Validate query length (Req 1.2)
         if (q.length > 200) {
             return res.status(400).json({ success: false, message: 'Search query too long' });
         }
-        // Short queries return empty result immediately (Req 1.4)
         const trimmed = q.trim();
         if (trimmed.length < 2) {
             return res.status(200).json({ success: true, data: [] });
         }
         const limit = Math.min(parseInt(String(limitParam)) || 10, 10);
         let products;
-        // Try $text search first (uses the existing text index on name/description/tags)
+        const regex = new RegExp(trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        // Try $text search first (uses the index on name/description/tags)
         try {
-            products = await Product_1.default.find({ $text: { $search: trimmed } }, { score: { $meta: 'textScore' } })
-                .select('name price image weight stock rating')
+            products = await Product_1.default.find({
+                $or: [
+                    { $text: { $search: trimmed } },
+                    { weight: regex },
+                    { 'variants.weight': regex }
+                ]
+            }, { score: { $meta: 'textScore' } })
+                .select('name price originalPrice image weight stock rating variants')
                 .sort({ score: { $meta: 'textScore' } })
                 .limit(limit)
                 .lean();
         }
         catch {
-            // Fallback to $regex if text index is unavailable
-            const regex = new RegExp(trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            // Fallback to $regex
             products = await Product_1.default.find({
                 $or: [
                     { name: regex },
                     { description: regex },
+                    { tags: regex },
+                    { weight: regex },
+                    { 'variants.weight': regex }
                 ],
             })
-                .select('name price image weight stock rating')
+                .select('name price originalPrice image weight stock rating variants')
                 .limit(limit)
                 .lean();
         }
@@ -287,25 +311,21 @@ const searchProducts = async (req, res) => {
 };
 exports.searchProducts = searchProducts;
 /**
- * Get recently viewed products — GET /api/products/recently-viewed
- * Returns ≤ 10 products ordered by most-recent viewedAt, omitting deleted products.
- * Requirements: 4.1, 4.4, 4.5
+ * Get recently viewed products
  */
 const getRecentlyViewed = async (req, res) => {
     try {
         const authReq = req;
         const userId = authReq.user.userId;
-        // Fetch user with recentlyViewed, sorted by viewedAt desc, limited to 10
         const user = await User_1.default.findById(userId)
             .populate({
             path: 'recentlyViewed.productId',
-            select: 'name price image weight stock rating',
+            select: 'name price originalPrice image weight stock rating variants',
         })
             .lean();
         if (!user) {
             return res.status(404).json(new response_1.ApiResponse(false, 'User not found', null, 404));
         }
-        // Sort by viewedAt descending, filter out deleted products (null after populate), limit 10
         const recentlyViewed = user.recentlyViewed
             .filter((entry) => entry.productId !== null)
             .sort((a, b) => new Date(b.viewedAt).getTime() - new Date(a.viewedAt).getTime())
@@ -317,27 +337,21 @@ const getRecentlyViewed = async (req, res) => {
         return res.status(200).json(new response_1.ApiResponse(true, 'Recently viewed products fetched', recentlyViewed));
     }
     catch (error) {
-        return res
-            .status(500)
-            .json(new response_1.ApiResponse(false, error.message || 'Failed to fetch recently viewed', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to fetch recently viewed', null, 500));
     }
 };
 exports.getRecentlyViewed = getRecentlyViewed;
 /**
- * Add product to recently viewed — POST /api/products/recently-viewed/:productId
- * Upserts product into a sliding window of 10 (most recent).
- * Requirements: 4.1, 4.4, 4.5
+ * Add product to recently viewed
  */
 const addToRecentlyViewed = async (req, res) => {
     try {
         const authReq = req;
         const { productId } = req.params;
         const userId = authReq.user.userId;
-        // Validate productId is a valid ObjectId
         if (!mongoose_1.default.Types.ObjectId.isValid(productId)) {
             return res.status(400).json(new response_1.ApiResponse(false, 'Invalid product ID', null, 400));
         }
-        // Check product exists
         const product = await Product_1.default.findById(productId).lean();
         if (!product) {
             return res.status(404).json(new response_1.ApiResponse(false, 'Product not found', null, 404));
@@ -348,26 +362,20 @@ const addToRecentlyViewed = async (req, res) => {
         }
         const now = new Date();
         const productObjId = new mongoose_1.default.Types.ObjectId(productId);
-        // Find if productId already exists in recentlyViewed
-        const existingIndex = user.recentlyViewed.findIndex((entry) => entry.productId.equals(productObjId));
+        const existingIndex = user.recentlyViewed.findIndex((e) => e.productId.equals(productObjId));
         if (existingIndex !== -1) {
-            // Update viewedAt timestamp (upsert)
             user.recentlyViewed[existingIndex].viewedAt = now;
         }
         else {
-            // Add new entry
             user.recentlyViewed.push({ productId: productObjId, viewedAt: now });
         }
-        // Keep only 10 most recent (sort desc, slice to 10)
         user.recentlyViewed.sort((a, b) => new Date(b.viewedAt).getTime() - new Date(a.viewedAt).getTime());
         user.recentlyViewed = user.recentlyViewed.slice(0, 10);
         await user.save();
         return res.status(200).json(new response_1.ApiResponse(true, 'Added to recently viewed'));
     }
     catch (error) {
-        return res
-            .status(500)
-            .json(new response_1.ApiResponse(false, error.message || 'Failed to update recently viewed', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to update recently viewed', null, 500));
     }
 };
 exports.addToRecentlyViewed = addToRecentlyViewed;
@@ -376,19 +384,41 @@ exports.addToRecentlyViewed = addToRecentlyViewed;
  */
 const uploadImage = async (req, res) => {
     try {
-        if (!req.file) {
+        if (!req.file || !req.file.buffer) {
             return res.status(400).json(new response_1.ApiResponse(false, 'No file uploaded', null, 400));
         }
-        // Construct the image URL that will be served from the backend
-        const imageUrl = `/uploads/products/${req.file.filename}`;
-        res.status(200).json(new response_1.ApiResponse(true, 'Image uploaded successfully', {
+        const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+        const apiKey = process.env.CLOUDINARY_API_KEY;
+        const apiSecret = process.env.CLOUDINARY_API_SECRET;
+        // If Cloudinary is configured, use it
+        if (cloudName && apiKey && apiSecret) {
+            const result = await (0, cloudinary_1.uploadToCloudinary)(req.file.buffer, 'matasree/products');
+            return res.status(200).json(new response_1.ApiResponse(true, 'Image uploaded successfully', {
+                imageUrl: result.secure_url,
+                publicId: result.public_id,
+            }));
+        }
+        // Development fallback: save to local uploads/products directory
+        const uploadsDir = path_1.default.join(process.cwd(), 'uploads', 'products');
+        if (!fs_1.default.existsSync(uploadsDir)) {
+            fs_1.default.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const ext = req.file.mimetype === 'image/png' ? '.png'
+            : req.file.mimetype === 'image/webp' ? '.webp'
+                : req.file.mimetype === 'image/gif' ? '.gif'
+                    : '.jpg';
+        const filename = `product-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+        const filepath = path_1.default.join(uploadsDir, filename);
+        fs_1.default.writeFileSync(filepath, req.file.buffer);
+        const imageUrl = `/uploads/products/${filename}`;
+        console.warn('⚠️  Cloudinary not configured — image saved locally:', imageUrl);
+        return res.status(200).json(new response_1.ApiResponse(true, 'Image uploaded successfully (local storage — configure Cloudinary for production)', {
             imageUrl,
-            filename: req.file.filename,
-            size: req.file.size,
+            publicId: filename,
         }));
     }
     catch (error) {
-        res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to upload image', null, 500));
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to upload image', null, 500));
     }
 };
 exports.uploadImage = uploadImage;

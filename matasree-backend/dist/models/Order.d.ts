@@ -5,6 +5,7 @@ export interface IOrderItem {
     price: number;
     quantity: number;
     image: string;
+    weight?: string;
 }
 export interface IOrder {
     _id: mongoose.Types.ObjectId;
@@ -12,8 +13,10 @@ export interface IOrder {
     orderNumber: string;
     items: IOrderItem[];
     totalAmount: number;
+    shippingCharge?: number;
     shippingAddress: {
         name: string;
+        fullName?: string;
         addressLine1: string;
         addressLine2?: string;
         city: string;
@@ -22,14 +25,17 @@ export interface IOrder {
         phone: string;
     };
     paymentMethod: 'razorpay' | 'cod';
-    paymentStatus: 'pending' | 'paid' | 'failed';
+    paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
     paymentId?: string;
-    orderstatus: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+    razorpayOrderId?: string;
+    razorpayPaymentId?: string;
+    orderstatus: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
     couponCode?: string;
     discountAmount?: number;
     loyaltyPointsEarned?: number;
     loyaltyPointsRedeemed?: number;
     loyaltyDiscountAmount?: number;
+    stockReservedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
 }

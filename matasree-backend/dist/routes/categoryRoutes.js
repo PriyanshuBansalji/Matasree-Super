@@ -36,13 +36,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const categoryController = __importStar(require("../controllers/categoryController"));
 const auth_1 = require("../middleware/auth");
+const cache_1 = require("../middleware/cache");
 const router = (0, express_1.Router)();
-// Public routes
-router.get('/', categoryController.getCategories);
+// Invalidation middleware for category modifications
+const invalidateCategoriesCache = (req, res, next) => {
+    res.on('finish', async () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            await (0, cache_1.invalidateCachePattern)('categories:*');
+        }
+    });
+    next();
+};
+// Public routes (Cached for 10 minutes)
+router.get('/', (0, cache_1.cacheMiddleware)(600, 'categories'), categoryController.getCategories);
 router.get('/:id', categoryController.getCategoryById);
-// Admin routes
-router.post('/', auth_1.verifyToken, auth_1.verifyAdmin, categoryController.createCategory);
-router.put('/:id', auth_1.verifyToken, auth_1.verifyAdmin, categoryController.updateCategory);
-router.delete('/:id', auth_1.verifyToken, auth_1.verifyAdmin, categoryController.deleteCategory);
+// Admin routes (Invalidates categories cache on success)
+router.post('/', auth_1.verifyToken, auth_1.verifyAdmin, invalidateCategoriesCache, categoryController.createCategory);
+router.put('/:id', auth_1.verifyToken, auth_1.verifyAdmin, invalidateCategoriesCache, categoryController.updateCategory);
+router.delete('/:id', auth_1.verifyToken, auth_1.verifyAdmin, invalidateCategoriesCache, categoryController.deleteCategory);
 exports.default = router;
 //# sourceMappingURL=categoryRoutes.js.map

@@ -4,12 +4,14 @@ export interface IPayment {
   _id: mongoose.Types.ObjectId;
   orderId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
-  razorpayPaymentId?: string;
-  razorpayOrderId?: string;
-  razorpaySignature?: string;
+  cashfreePaymentId?: string;
+  cashfreeOrderId?: string;
+  cfPaymentId?: string;
+  signature?: string;
   amount: number;
-  status: 'pending' | 'success' | 'failed' | 'refund_initiated';
-  method: 'razorpay' | 'cod';
+  status: 'pending' | 'success' | 'failed' | 'refund_initiated' | 'refunded';
+  method: 'cashfree' | 'cod' | 'razorpay';
+  rawGatewayResponse?: any;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,29 +28,32 @@ const paymentSchema = new Schema<IPayment>(
       ref: 'User',
       required: true,
     },
-    razorpayPaymentId: String,
-    razorpayOrderId: String,
-    razorpaySignature: String,
+    cashfreePaymentId: String,
+    cashfreeOrderId: String,
+    cfPaymentId: String,
+    signature: String,
     amount: {
       type: Number,
       required: true,
     },
     status: {
       type: String,
-      enum: ['pending', 'success', 'failed', 'refund_initiated'],
+      enum: ['pending', 'success', 'failed', 'refund_initiated', 'refunded'],
       default: 'pending',
     },
     method: {
       type: String,
-      enum: ['razorpay', 'cod'],
+      enum: ['cashfree', 'cod', 'razorpay'],
       required: true,
     },
+    rawGatewayResponse: Schema.Types.Mixed,
   },
   { timestamps: true }
 );
 
 // Indexes for order and user payment lookups
 paymentSchema.index({ orderId: 1 }, { background: true });
+paymentSchema.index({ cashfreeOrderId: 1 }, { background: true });
 paymentSchema.index({ userId: 1, status: 1 }, { background: true });
 
 export default mongoose.model<IPayment>('Payment', paymentSchema);

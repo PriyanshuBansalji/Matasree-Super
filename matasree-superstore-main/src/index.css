@@ -576,3 +576,109 @@
 [data-theme="dark"] *:focus-visible {
   outline-color: #fbbf24; /* amber-400 — sufficient contrast on dark bg */
 }
+
+/* ============= GLASSMORPHISM CARD (Req 9.1–9.3) ============= */
+.glass-card {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.90);
+  }
+}
+
+/* ============= BRAND SKELETON SHIMMER (Req 13.1–13.4) ============= */
+.animate-pulse,
+[data-skeleton] {
+  background: linear-gradient(
+    90deg,
+    #f5f0e8 0%,
+    #f5e0b3 40%,
+    #f5a623 60%,
+    #f5e0b3 80%,
+    #f5f0e8 100%
+  );
+  background-size: 200% 100%;
+  animation: brandShimmer 2s linear infinite;
+}
+
+@keyframes brandShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  [data-skeleton] {
+    animation: none;
+    background: #f5e0b3;
+  }
+}
+
+/* ============= GRADIENT MESH KEYFRAMES (Req 10.3) ============= */
+@keyframes meshFloat1 {
+  from { transform: translate(0px, 0px); }
+  to   { transform: translate(40px, -30px); }
+}
+
+@keyframes meshFloat2 {
+  from { transform: translate(0px, 0px); }
+  to   { transform: translate(-35px, 25px); }
+}
+
+/* ============= CUSTOM CURSOR (Req 1.8) ============= */
+/* Native cursor is kept visible — the orb renders alongside it. */
+
+/* ============= TOAST MICRO-ANIMATIONS (Req 12.1–12.5) ============= */
+[data-sonner-toast] {
+  animation: toastEnter 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+[data-sonner-toast][data-removed] {
+  animation: toastExit 0.28s ease-in forwards;
+}
+
+@keyframes toastEnter {
+  from { transform: translateY(48px) scale(0.85); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes toastExit {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sonner-toast],
+  [data-sonner-toast][data-removed] {
+    animation: toastFade 0.2s ease forwards;
+  }
+}
+
+@keyframes toastFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ============= RIPPLE BUTTON (Req 14.2–14.3) ============= */
+@keyframes rippleExpand {
+  0% {
+    width: 40px;
+    height: 40px;
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    width: 160px;
+    height: 160px;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}

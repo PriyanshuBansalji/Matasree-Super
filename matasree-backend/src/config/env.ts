@@ -42,15 +42,25 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
 
-  // Email
-  EMAIL_SERVICE: z.string().default('gmail'),
+  // Email Configuration
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().default('587'),
+  SMTP_SECURE: z.string().default('false'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  MAIL_FROM_NAME: z.string().default('Matasree Super'),
+  MAIL_FROM_ADDRESS: z.string().default('admin@matasreesuper.com'),
+  REPLY_TO_ADDRESS: z.string().default('admin@matasreesuper.com'),
+  EMAIL_SERVICE: z.string().default('smtp'),
   EMAIL_USER: z.string().optional(),
   EMAIL_PASSWORD: z.string().optional(),
-  ADMIN_EMAIL: z.string().optional(),
+  ADMIN_EMAIL: z.string().default('admin@matasreesuper.com'),
 
-  // Payment
-  RAZORPAY_KEY_ID: z.string().optional(),
-  RAZORPAY_KEY_SECRET: z.string().optional(),
+  // Payment (Cashfree Payments)
+  CASHFREE_APP_ID: z.string().optional(),
+  CASHFREE_SECRET_KEY: z.string().optional(),
+  CASHFREE_ENVIRONMENT: z.string().default('SANDBOX'),
+  CASHFREE_WEBHOOK_SECRET: z.string().optional(),
 
   // SMS (Twilio)
   TWILIO_ACCOUNT_SID: z.string().optional(),
@@ -67,7 +77,7 @@ export const validateEnv = () => {
 
   if (!result.success) {
     console.error('❌ Environment variable validation failed:');
-    result.error.issues.forEach((issue) => {
+    result.error.issues.forEach((issue: any) => {
       console.error(`   - ${issue.path.join('.')}: ${issue.message}`);
     });
     process.exit(1);

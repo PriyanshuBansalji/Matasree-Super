@@ -21,6 +21,13 @@ interface SeasonalBanner {
   activeTo: string;
 }
 
+const getImageUrl = (path: string | null | undefined): string => {
+  if (!path || !path.trim()) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) return path;
+  const BACKEND_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
+  return path.startsWith('/') ? `${BACKEND_URL}${path}` : `${BACKEND_URL}/${path}`;
+};
+
 const SeasonalBannerSlot = () => {
   const { data } = useQuery({
     queryKey: ['seasonal-banners'],
@@ -54,7 +61,7 @@ const SeasonalBannerSlot = () => {
       >
         {/* Background Image */}
         <img
-          src={banner.image}
+          src={getImageUrl(banner.image)}
           alt={banner.title}
           className="absolute inset-0 w-full h-full object-cover"
         />

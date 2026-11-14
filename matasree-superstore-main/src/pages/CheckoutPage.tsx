@@ -32,12 +32,6 @@ import PageHelmet from '@/components/PageHelmet';
 import ExitIntentModal from '@/components/ExitIntentModal';
 import TrustBadges from '@/components/TrustBadges';
 
-declare global {
-    interface Window {
-        Razorpay: any;
-    }
-}
-
 const CheckoutPage = () => {
     const navigate = useNavigate();
     const { items, totalPrice, clearCart, removeItem, updateItemPrice } = useCartStore();
@@ -45,7 +39,7 @@ const CheckoutPage = () => {
     const { data: addressesData, isLoading: addressesLoading } = useAddresses();
 
     const [selectedAddressId, setSelectedAddressId] = useState<string>('');
-    const [paymentMethod, setPaymentMethod] = useState<'cod' | 'razorpay'>('razorpay');
+    const [paymentMethod, setPaymentMethod] = useState<'cod' | 'cashfree'>('cashfree');
     const [isProcessing, setIsProcessing] = useState(false);
     const [step, setStep] = useState(1);
 
@@ -99,7 +93,7 @@ const CheckoutPage = () => {
     const getImageUrl = (path: string | null | undefined): string => {
         if (!path) return 'https://via.placeholder.com/100';
         if (path.startsWith('http://') || path.startsWith('https://')) return path;
-        const BACKEND_URL = 'http://localhost:5001';
+        const BACKEND_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
         return path.startsWith('/') ? `${BACKEND_URL}${path}` : `${BACKEND_URL}/${path}`;
     };
 
@@ -120,8 +114,14 @@ const CheckoutPage = () => {
             const response = await apiClient.validateCoupon(couponCode.trim(), subtotal);
             const couponData = (response as any).data;
 
-            setAppliedCoupon(couponData);
-            toast.success(`Coupon applied! You save ₹${couponData.calculatedDiscount} 🎉`);
+            // Backend returns `discountAmount`; map it to `calculatedDiscount` for display
+            const normalized = {
+                ...couponData,
+                calculatedDiscount: couponData.calculatedDiscount ?? couponData.discountAmount ?? 0,
+            };
+
+            setAppliedCoupon(normalized);
+            toast.success(`Coupon applied! You save ₹${normalized.calculatedDiscount}`);
         } catch (error: any) {
             const msg = error.response?.data?.message || 'Invalid coupon code';
             toast.error(msg);
@@ -149,9 +149,10 @@ const CheckoutPage = () => {
 
         try {
             const formattedItems = items.map((item) => ({
-                productId: item.id,
-                quantity: item.quantity,
-                clientPrice: item.price,
+                productId: item.productId,
+                quantity: Number(item.quantity),
+                clientPrice: Number(item.price),
+                weight: item.weight || 'default',
             }));
 
             const response: any = await apiClient.syncCart(formattedItems);
@@ -202,25 +203,12 @@ const CheckoutPage = () => {
     // addToCart (which increments quantities, causing duplicates on repeated calls).
     const syncCartToBackend = async () => {
         const formattedItems = items.map((item) => ({
-            productId: item.id,
-            quantity: item.quantity,
-            clientPrice: item.price,
+            productId: item.productId,
+            quantity: Number(item.quantity),
+            clientPrice: Number(item.price),
+            weight: item.weight || 'default',
         }));
         await apiClient.syncCart(formattedItems);
-    };
-
-    const loadRazorpayScript = (): Promise<boolean> => {
-        return new Promise((resolve) => {
-            if (window.Razorpay) {
-                resolve(true);
-                return;
-            }
-            const script = document.createElement('script');
-            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-            script.onload = () => resolve(true);
-            script.onerror = () => resolve(false);
-            document.body.appendChild(script);
-        });
     };
 
     const handlePlaceOrder = async () => {
@@ -229,89 +217,91 @@ const CheckoutPage = () => {
             return;
         }
 
+        if (isProcessing) return; // Prevent duplicate clicks
+
         setIsProcessing(true);
         try {
-            // 1. Sync cart to backend
-            await syncCartToBackend();
-
-            // 2. Create order
+            // Create order
             const totalDiscount = (couponDiscount || 0) + (loyaltyDiscount || 0);
-            const orderResponse = await apiClient.createOrder({
+            const orderResponse: any = await apiClient.createOrder({
                 addressId: selectedAddressId,
                 paymentMethod,
                 couponCode: appliedCoupon?.code || undefined,
                 discountAmount: totalDiscount > 0 ? totalDiscount : undefined,
+                items,
             });
 
-            const { order, razorpayOrder } = (orderResponse as any).data;
+            const resData = orderResponse?.data ?? orderResponse;
+            const order = resData?.order ?? resData?.data?.order ?? resData;
+            const paymentSessionId = resData?.paymentSessionId ?? resData?.data?.paymentSessionId;
+            const cashfreeOrderId = resData?.cashfreeOrderId ?? resData?.data?.cashfreeOrderId;
+            const targetOrderId = order?._id || order?.id || 'latest';
 
-            // 3. Mark coupon as used
-            if (appliedCoupon?.code && order?._id) {
+            // Mark coupon as used
+            if (appliedCoupon?.code && targetOrderId && targetOrderId !== 'latest') {
                 try {
-                    await apiClient.applyCoupon(appliedCoupon.code, order._id);
+                    await apiClient.applyCoupon(appliedCoupon.code, targetOrderId, subtotal);
                 } catch (err) {
                     console.error('Failed to mark coupon as used:', err);
                 }
             }
 
-            if (paymentMethod === 'razorpay' && razorpayOrder) {
-                // 4. Open Razorpay
-                const scriptLoaded = await loadRazorpayScript();
-                if (!scriptLoaded) {
-                    toast.error('Failed to load payment gateway');
+            if (paymentMethod === 'cashfree') {
+                if (!paymentSessionId) {
+                    toast.error('Payment initialization failed', {
+                        description: 'Could not create Cashfree payment session. Please try Cash on Delivery.',
+                    });
                     setIsProcessing(false);
                     return;
                 }
 
-                const options = {
-                    key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_placeholder',
-                    amount: razorpayOrder.amount,
-                    currency: razorpayOrder.currency || 'INR',
-                    name: 'Matasree Super',
-                    description: `Order ${order.orderNumber}`,
-                    order_id: razorpayOrder.id,
-                    handler: async (response: any) => {
-                        try {
-                            await apiClient.post('/orders/verify-payment', {
-                                orderId: order._id,
-                                razorpayPaymentId: response.razorpay_payment_id,
-                                razorpayOrderId: response.razorpay_order_id,
-                                razorpaySignature: response.razorpay_signature,
-                            });
-                            clearCart();
-                            toast.success('Payment successful! 🎉');
-                            navigate('/orders');
-                        } catch (err: any) {
-                            toast.error('Payment verification failed');
-                        }
-                    },
-                    prefill: {
-                        name: user?.name || '',
-                        email: user?.email || '',
-                    },
-                    theme: {
-                        color: '#D4A373',
-                    },
-                    modal: {
-                        ondismiss: () => {
-                            setIsProcessing(false);
-                            toast.info('Payment cancelled');
-                        },
-                    },
-                };
+                try {
+                    const { load: loadCashfree } = await import('@cashfreepayments/cashfree-js');
+                    const mode = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox').toLowerCase() === 'production' ? 'production' : 'sandbox';
+                    const cashfree = await loadCashfree({ mode: mode as any });
 
-                const rzp = new window.Razorpay(options);
-                rzp.open();
+                    toast.info('Opening Cashfree secure checkout...');
+                    
+                    await cashfree.checkout({
+                        paymentSessionId,
+                        redirectTarget: '_modal',
+                    });
+
+                    // Verification step after checkout interaction
+                    try {
+                        await apiClient.verifyPayment({
+                            orderId: targetOrderId,
+                            cashfreeOrderId,
+                        });
+                        clearCart();
+                        toast.success('Payment completed successfully!');
+                        navigate(`/order-success/${targetOrderId}`);
+                    } catch (verifyErr) {
+                        toast.info('Payment processed. Verifying order status...');
+                        clearCart();
+                        navigate(`/order-success/${targetOrderId}`);
+                    }
+                } catch (cfErr: any) {
+                    console.error('[Cashfree] Checkout error:', cfErr);
+                    toast.error('Payment checkout failed or was cancelled.', {
+                        description: 'You can retry payment or choose Cash on Delivery.',
+                    });
+                }
             } else {
                 // COD order
                 clearCart();
-                toast.success('Order placed successfully! 🎉', {
+                toast.success('Order placed successfully!', {
                     description: 'You will pay on delivery.',
                 });
-                navigate('/orders');
+                navigate(`/order-success/${targetOrderId}`);
             }
         } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Failed to place order');
+            const msg = error.response?.data?.message || error.message || 'Failed to place order';
+            toast.error(msg, {
+                description: msg.includes('Cashfree') || msg.includes('configured')
+                    ? 'Please switch to Cash on Delivery or contact support.'
+                    : undefined,
+            });
         } finally {
             setIsProcessing(false);
         }
@@ -422,14 +412,16 @@ const CheckoutPage = () => {
                                 <h2 className="font-serif text-xl font-bold flex items-center gap-2 mb-4">
                                     <CreditCard className="w-5 h-5 text-primary" /> Payment Method
                                 </h2>
-                                <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as 'cod' | 'razorpay')} className="space-y-3">
-                                    <Label htmlFor="razorpay" className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === 'razorpay' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'}`}>
-                                        <RadioGroupItem value="razorpay" id="razorpay" />
+                                <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as 'cod' | 'cashfree')} className="space-y-3">
+                                    <Label htmlFor="cashfree" className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === 'cashfree' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'}`}>
+                                        <RadioGroupItem value="cashfree" id="cashfree" />
                                         <div className="flex-1">
-                                            <p className="font-semibold">Pay Online (Razorpay)</p>
-                                            <p className="text-sm text-muted-foreground">UPI, Cards, Net Banking, Wallets</p>
+                                            <p className="font-semibold flex items-center gap-2">
+                                                Pay Online <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800">Cashfree Payments</Badge>
+                                            </p>
+                                            <p className="text-sm text-muted-foreground">UPI (GPay, PhonePe, Paytm), Credit/Debit Cards, Net Banking, Wallets</p>
                                         </div>
-                                        <Shield className="w-5 h-5 text-green-600" />
+                                        <Shield className="w-5 h-5 text-emerald-600" />
                                     </Label>
                                     <Label htmlFor="cod" className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === 'cod' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'}`}>
                                         <RadioGroupItem value="cod" id="cod" />
@@ -536,7 +528,7 @@ const CheckoutPage = () => {
                                         </Button>
                                     </div>
                                     <p className="text-xs text-muted-foreground">
-                                        💡 Subscribe to our newsletter to get your exclusive 10% off code!
+                                        Subscribe to our newsletter to get your exclusive 10% off code!
                                     </p>
                                 </div>
                             )}

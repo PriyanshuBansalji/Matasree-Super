@@ -6,7 +6,7 @@ export interface ICoupon {
     discountValue: number;
     minOrderAmount: number;
     maxDiscount: number;
-    email: string;
+    email?: string;
     userId?: mongoose.Types.ObjectId;
     isUsed: boolean;
     usedAt?: Date;

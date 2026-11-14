@@ -6,17 +6,20 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { connectDB } from './config/database';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { sanitizeMongo, preventHPP, xssSanitizer } from './middleware/sanitizer';
+import { csrfProtection } from './middleware/csrf';
+import { userRateLimiter } from './middleware/rateLimiter';
 import passport, { initializePassport } from './config/passport';
 import logger from './config/logger';
 
 // Jobs
 import { initCartAbandonmentJob } from './jobs/cartAbandonmentJob';
+import { startStockReleaseJob } from './jobs/stockReleaseJob';
+import { initScheduledPublishJob } from './jobs/scheduledPublishJob';
 
 // Routes
 import authRoutes from './routes/authRoutes';
@@ -33,6 +36,7 @@ import couponRoutes from './routes/couponRoutes';
 import wishlistRoutes from './routes/wishlistRoutes';
 import loyaltyRoutes from './routes/loyaltyRoutes';
 import referralRoutes from './routes/referralRoutes';
+import webhookRoutes from './routes/webhookRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -47,14 +51,16 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https:"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/"],
       imgSrc: ["'self'", "data:", "https:", "http:", "res.cloudinary.com"],
       mediaSrc: ["'self'", "data:"],
       fontSrc: ["'self'", "https:", "data:"],
-      connectSrc: ["'self'", "https://accounts.google.com", "https://github.com"],
+      connectSrc: ["'self'", "https://accounts.google.com", "https://github.com", "https://www.google.com/recaptcha/"],
+      frameSrc: ["'self'", "https://www.google.com/recaptcha/", "https://recaptcha.google.com/recaptcha/"],
     },
   },
   crossOriginResourcePolicy: { policy: "cross-origin" },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
 }));
 
 // CORS - allow frontend origins
@@ -62,9 +68,11 @@ const allowedOrigins = [
   'http://localhost:8000',     // Frontend dev (Vite)
   'http://localhost:8001',     // Frontend dev (Vite alt)
   'http://localhost:8080',     // Frontend dev (Vite port 8080)
+  'http://localhost:3000',     // JSDOM / Test runner port 3000
   'http://127.0.0.1:8000',    // Frontend dev (alt)
   'http://127.0.0.1:8001',    // Frontend dev (alt)
   'http://127.0.0.1:8080',    // Frontend dev (alt port 8080)
+  'http://127.0.0.1:3000',    // JSDOM / Test runner port 3000 (alt)
   'http://localhost:5001',     // Backend self
   process.env.FRONTEND_URL || 'http://localhost:8080',
 ];
@@ -81,32 +89,39 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 }));
 
 // Cookie parser for HTTP-only refresh token cookies
 app.use(cookieParser());
 
+// CSRF Protection
+app.use(csrfProtection);
+
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000'),
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-  legacyHeaders: false,  // Disable `X-RateLimit-*` headers
-});
+const limiter = userRateLimiter(
+  parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
+  parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000', 10)
+);
 
 // Stricter rate limit for auth routes
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,                  // 20 attempts per window
-  message: 'Too many auth attempts. Please try again later.',
-});
+const authLimiter = userRateLimiter(
+  15 * 60 * 1000, // 15 minutes
+  20,             // 20 attempts per window
+  'Too many auth attempts. Please try again later.'
+);
 
 app.use(limiter);
 
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
+// Body parsing (capturing rawBody for Webhook signature validation)
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString();
+    },
+  })
+);
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Request sanitization
@@ -191,6 +206,8 @@ app.use('/api/coupons', couponRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
 app.use('/api/referral', referralRoutes);
+app.use('/api/referrals', referralRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -215,6 +232,8 @@ const startServer = async () => {
   try {
     await connectDB();
     initCartAbandonmentJob();
+    startStockReleaseJob();
+    initScheduledPublishJob();
     app.listen(PORT, () => {
       logger.info(`✅ Server running on http://localhost:${PORT}`);
       logger.info(`📡 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:8080'}`);

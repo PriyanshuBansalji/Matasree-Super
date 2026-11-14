@@ -94,7 +94,7 @@ const TestimonialsSection = () => {
   });
 
   const dynamicReviews = useMemo(() => {
-    const reviews = reviewsData?.data?.data || [];
+    const reviews = reviewsData?.data || [];
     return Array.isArray(reviews) ? reviews : [];
   }, [reviewsData]);
 
@@ -118,7 +118,7 @@ const TestimonialsSection = () => {
     setIsSubmitting(true);
     try {
       await apiClient.submitReview(formData);
-      toast.success('Thank you for your feedback! 🎉', { description: 'Your review will be visible after approval.' });
+      toast.success('Thank you for your feedback!', { description: 'Your review will be visible after approval.' });
       setFormData({ name: '', rating: 5, comment: '' });
       setShowForm(false);
     } catch (error: unknown) {
@@ -175,6 +175,7 @@ const TestimonialsSection = () => {
               transition={{ duration: 0.6 }}
             >
               <Button
+                type="button"
                 onClick={() => setShowForm(true)}
                 className="bg-gradient-to-r from-[#D63220] to-[#E65C19] text-white font-bold px-10 py-6 rounded-full shadow-[0_20px_40px_rgba(214,50,32,0.2)] hover:shadow-[0_20px_50px_rgba(214,50,32,0.3)] hover:scale-[1.03] transition-all text-lg"
               >

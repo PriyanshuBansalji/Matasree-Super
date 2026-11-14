@@ -39,22 +39,33 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const productController = __importStar(require("../controllers/productController"));
 const auth_1 = require("../middleware/auth");
+const cache_1 = require("../middleware/cache");
 const upload_1 = __importDefault(require("../middleware/upload"));
+const imageOptimizer_1 = require("../middleware/imageOptimizer");
 const router = (0, express_1.Router)();
-// Public routes
-router.get('/', productController.getProducts);
-router.get('/featured', productController.getFeaturedProducts);
+// Invalidation middleware for state-changing product routes
+const invalidateProductsCache = (req, res, next) => {
+    res.on('finish', async () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            await (0, cache_1.invalidateCachePattern)('products:*');
+        }
+    });
+    next();
+};
+// Public routes (Cached for 5 minutes)
+router.get('/', (0, cache_1.cacheMiddleware)(300, 'products'), productController.getProducts);
+router.get('/featured', (0, cache_1.cacheMiddleware)(300, 'products'), productController.getFeaturedProducts);
 // Search route must be registered before /:id to avoid route shadowing
 router.get('/search', productController.searchProducts);
 // Recently Viewed routes — must be registered before /:id to avoid route shadowing
 router.get('/recently-viewed', auth_1.verifyToken, productController.getRecentlyViewed);
 router.post('/recently-viewed/:productId', auth_1.verifyToken, productController.addToRecentlyViewed);
 router.get('/:id', productController.getProductById);
-// Admin routes
-router.post('/', auth_1.verifyToken, auth_1.verifyAdmin, upload_1.default.single('image'), productController.createProduct);
-router.put('/:id', auth_1.verifyToken, auth_1.verifyAdmin, upload_1.default.single('image'), productController.updateProduct);
-router.delete('/:id', auth_1.verifyToken, auth_1.verifyAdmin, productController.deleteProduct);
+// Admin routes (Optimizes image and invalidates products cache on success)
+router.post('/', auth_1.verifyToken, auth_1.verifyAdmin, upload_1.default.single('image'), imageOptimizer_1.optimizeProductImage, invalidateProductsCache, productController.createProduct);
+router.put('/:id', auth_1.verifyToken, auth_1.verifyAdmin, upload_1.default.single('image'), imageOptimizer_1.optimizeProductImage, invalidateProductsCache, productController.updateProduct);
+router.delete('/:id', auth_1.verifyToken, auth_1.verifyAdmin, invalidateProductsCache, productController.deleteProduct);
 // Image upload route
-router.post('/upload/image', auth_1.verifyToken, auth_1.verifyAdmin, upload_1.default.single('image'), productController.uploadImage);
+router.post('/upload/image', auth_1.verifyToken, auth_1.verifyAdmin, upload_1.default.single('image'), imageOptimizer_1.optimizeProductImage, productController.uploadImage);
 exports.default = router;
 //# sourceMappingURL=productRoutes.js.map

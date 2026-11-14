@@ -27,7 +27,8 @@
     ]
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "src/types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",
@@ -35,6 +36,7 @@
   ],
   "ts-node": {
     "esm": false,
-    "transpileOnly": true
+    "transpileOnly": true,
+    "diagnostics": false
   }
 }

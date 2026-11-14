@@ -8,6 +8,12 @@ export interface IRecentlyViewedEntry {
     productId: mongoose.Types.ObjectId;
     viewedAt: Date;
 }
+export interface ILoginHistoryEntry {
+    ip: string;
+    userAgent: string;
+    timestamp: Date;
+    success: boolean;
+}
 export interface IUser {
     _id: mongoose.Types.ObjectId;
     name: string;
@@ -24,6 +30,11 @@ export interface IUser {
     referralCode: string;
     loyaltyAccountId?: mongoose.Types.ObjectId;
     recentlyViewed: IRecentlyViewedEntry[];
+    failedLoginAttempts: number;
+    lockUntil?: Date;
+    lastLoginAt?: Date;
+    lastLoginIp?: string;
+    loginHistory: ILoginHistoryEntry[];
     createdAt: Date;
     updatedAt: Date;
 }

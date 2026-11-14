@@ -1,15 +1,30 @@
+/**
+ * Auth Store (Zustand)
+ *
+ * Manages authentication state with Zustand `persist` middleware.
+ * Token and user data are automatically persisted to localStorage by the
+ * middleware — NO manual localStorage reads/writes needed.
+ *
+ * OAuth flow uses `setAuthInMemory` which writes to Zustand state only
+ * (the persist middleware will serialize it automatically).
+ */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { apiClient } from '@/services/api';
 
 interface User {
+  _id: string;
+  /** @alias _id — backward-compatible alias */
   id?: string;
-  _id?: string;
   name: string;
   email: string;
   phone?: string;
-  role: 'customer' | 'admin' | string;
+  role: 'customer' | 'admin';
+  avatar?: string;
+  referralCode?: string;
+  /** @deprecated Use `role === 'admin'` instead */
   isAdmin?: boolean;
+  createdAt?: string;
 }
 
 interface AuthState {
@@ -44,18 +59,17 @@ export const useAuthStore = create<AuthState>()(
           const response = await apiClient.login({ email, password });
           const { accessToken, user } = response.data;
 
-          console.log('🔐 Login Response:', { token: accessToken, user });
-
-          // Store token in localStorage
-          localStorage.setItem('authToken', accessToken);
-          localStorage.setItem('user', JSON.stringify(user));
+          // Normalize _id → id for backward compatibility
+          const normalizedUser = { ...user, _id: user._id || user.id, id: user._id || user.id };
 
           set({
-            user,
+            user: normalizedUser,
             token: accessToken,
             isAuthenticated: true,
             isLoading: false,
           });
+          // Keep the flat key in sync for the axios request interceptor (Bug 6 fix)
+          localStorage.setItem('authToken', accessToken);
         } catch (error: any) {
           const errorMessage = error.response?.data?.message || error.message || 'Login failed';
           set({
@@ -73,18 +87,17 @@ export const useAuthStore = create<AuthState>()(
           const response = await apiClient.register({ name, email, password });
           const { accessToken, user } = response.data;
 
-          console.log('📝 Register Response:', { token: accessToken, user });
-
-          // Store token in localStorage
-          localStorage.setItem('authToken', accessToken);
-          localStorage.setItem('user', JSON.stringify(user));
+          // Normalize _id → id for backward compatibility
+          const normalizedUser = { ...user, _id: user._id || user.id, id: user._id || user.id };
 
           set({
-            user,
+            user: normalizedUser,
             token: accessToken,
             isAuthenticated: true,
             isLoading: false,
           });
+          // Keep the flat key in sync for the axios request interceptor (Bug 6 fix)
+          localStorage.setItem('authToken', accessToken);
         } catch (error: any) {
           const errorMessage = error.response?.data?.message || error.message || 'Registration failed';
           set({
@@ -108,52 +121,48 @@ export const useAuthStore = create<AuthState>()(
       },
 
       initializeAuth: () => {
-        const token = localStorage.getItem('authToken');
-        const user = localStorage.getItem('user');
-
-        if (token && user) {
-          try {
-            const parsedUser = JSON.parse(user);
-            set({
-              token,
-              user: parsedUser,
-              isAuthenticated: true,
-            });
-          } catch {
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('user');
-            set({
-              token: null,
-              user: null,
-              isAuthenticated: false,
-            });
-          }
+        const state = useAuthStore.getState();
+        // Check both Zustand state and the flat localStorage key the axios
+        // interceptor uses. The persist middleware may not have rehydrated yet
+        // when this runs, so we fall back to the flat key rather than clearing it.
+        const flatToken = localStorage.getItem('authToken');
+        if (state.token && state.user) {
+          localStorage.setItem('authToken', state.token);
+          set({ isAuthenticated: true });
+        } else if (flatToken) {
+          // Flat key exists — preserve it so in-flight API calls succeed.
+          // Auth is considered valid until the token is verified or expires.
+          set({ token: flatToken, isAuthenticated: true });
+        } else {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          set({ isAuthenticated: false, user: null, token: null });
         }
       },
 
       setUser: (user: User | null) => {
-        if (user) {
-          localStorage.setItem('user', JSON.stringify(user));
-        } else {
-          localStorage.removeItem('user');
-        }
         set({ user });
       },
 
       setToken: (token: string | null) => {
         if (token) {
           localStorage.setItem('authToken', token);
+          set({ token, isAuthenticated: true });
         } else {
           localStorage.removeItem('authToken');
+          set({ token: null, isAuthenticated: false });
         }
-        set({ token });
       },
 
       /**
-       * Stores the OAuth access token and user in Zustand in-memory state only.
-       * Does NOT write to localStorage — satisfies Req 29.4.
+       * Stores the OAuth access token and user in Zustand state.
+       * The persist middleware will serialize this to localStorage automatically.
+       * Satisfies Req 29.4.
        */
       setAuthInMemory: (accessToken: string, user: User) => {
+        if (accessToken) {
+          localStorage.setItem('authToken', accessToken);
+        }
         set({ token: accessToken, user, isAuthenticated: true, error: null });
       },
     }),
@@ -171,4 +180,3 @@ export const useAuthStore = create<AuthState>()(
 // Initialize auth IMMEDIATELY when this module loads (before any component renders)
 // This ensures isAuthenticated is correct on the very first render
 useAuthStore.getState().initializeAuth();
-

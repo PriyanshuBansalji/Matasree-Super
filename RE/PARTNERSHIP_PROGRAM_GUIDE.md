@@ -94,7 +94,7 @@ Backend:
 
 ### Required Environment Variables
 ```
-ADMIN_EMAIL=info@matasreesuper.com
+ADMIN_EMAIL=admin@matasreesuper.com
 ADMIN_DASHBOARD_URL=http://localhost:3000/admin/dashboard
 ```
 

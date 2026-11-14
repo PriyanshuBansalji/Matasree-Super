@@ -134,6 +134,7 @@ export const rotateRefreshToken = async (
       email: user.email,
       role: user.role,
       avatar: user.avatar,
+      isAdmin: user.role === 'admin',
     },
   };
 };

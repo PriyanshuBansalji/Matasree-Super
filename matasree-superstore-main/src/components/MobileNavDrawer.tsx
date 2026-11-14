@@ -22,6 +22,8 @@ const navLinks = [
   { name: 'Home', path: '/' },
   { name: 'Products', path: '/products' },
   { name: 'Categories', path: '/categories' },
+  { name: 'Recipes', path: '/recipes' },
+  { name: 'Spice Guide', path: '/spice-guide' },
   { name: 'About', path: '/about' },
   { name: 'Contact', path: '/contact' },
   { name: 'Become a Partner', path: '/partnership' },
@@ -235,6 +237,86 @@ const MobileNavDrawer = ({ isOpen, onClose }: MobileNavDrawerProps) => {
                         My Orders
                       </Link>
                     </li>
+                    {user?.role === 'admin' && (
+                      <>
+                        <div className="my-2 border-t border-accent/20" />
+                        <p className="text-xs font-semibold text-orange-600 uppercase tracking-widest px-3 mb-2">
+                          Admin Panel
+                        </p>
+                        <li>
+                          <Link
+                            to="/admin/dashboard"
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2 text-foreground/80 hover:text-primary hover:bg-primary/10 font-medium transition-all duration-200 rounded-lg text-sm"
+                          >
+                            Dashboard
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            to="/admin/users"
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2 text-foreground/80 hover:text-primary hover:bg-primary/10 font-medium transition-all duration-200 rounded-lg text-sm"
+                          >
+                            Users
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            to="/admin/products"
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2 text-foreground/80 hover:text-primary hover:bg-primary/10 font-medium transition-all duration-200 rounded-lg text-sm"
+                          >
+                            Products
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            to="/admin/categories"
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2 text-foreground/80 hover:text-primary hover:bg-primary/10 font-medium transition-all duration-200 rounded-lg text-sm"
+                          >
+                            Categories
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            to="/admin/orders"
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2 text-foreground/80 hover:text-primary hover:bg-primary/10 font-medium transition-all duration-200 rounded-lg text-sm"
+                          >
+                            Orders
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            to="/admin/banners"
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2 text-foreground/80 hover:text-primary hover:bg-primary/10 font-medium transition-all duration-200 rounded-lg text-sm"
+                          >
+                            Banners
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            to="/admin/recipes"
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2 text-foreground/80 hover:text-primary hover:bg-primary/10 font-medium transition-all duration-200 rounded-lg text-sm"
+                          >
+                            Recipes
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            to="/admin/coupons"
+                            onClick={onClose}
+                            className="flex items-center gap-3 px-3 py-2 text-foreground/80 hover:text-primary hover:bg-primary/10 font-medium transition-all duration-200 rounded-lg text-sm"
+                          >
+                            Coupons
+                          </Link>
+                        </li>
+                      </>
+                    )}
                     <li>
                       <button
                         onClick={handleLogout}

@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { Menu, ShoppingCart, User, Search, LogOut, Heart } from 'lucide-react';
+import { Menu, ShoppingCart, User, Search, LogOut, Heart, ChevronDown } from 'lucide-react';
 import MobileNavDrawer from '@/components/MobileNavDrawer';
 import BottomTabBar from '@/components/BottomTabBar';
 import { Button } from '@/components/ui/button';
@@ -53,7 +53,8 @@ const Navbar = () => {
   const getImageUrl = (path: string | null | undefined): string => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
-    return `http://localhost:5001${path.startsWith('/') ? '' : '/'}${path}`;
+    const base = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001';
+    return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
   };
 
   const navLinks = [
@@ -62,12 +63,25 @@ const Navbar = () => {
     { name: 'Categories', path: '/categories' },
     { name: 'About', path: '/about' },
     { name: 'Contact', path: '/contact' },
+  ];
+
+  const moreLinks = [
+    { name: 'Recipes', path: '/recipes' },
+    { name: 'Spice Guide', path: '/spice-guide' },
     { name: 'Become a Partner', path: '/partnership' },
   ];
 
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      setShowSearchResults(false);
+      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+    }
   };
 
   return (
@@ -100,12 +114,34 @@ const Navbar = () => {
                 </Link>
               </li>
             ))}
+            {/* More dropdown */}
+            <li className="relative group">
+              <button
+                className="flex items-center gap-1 px-5 py-2.5 text-foreground/80 hover:text-primary font-bold tracking-wide text-sm transition-all duration-300 rounded-full hover:bg-primary/10 uppercase"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                More
+                <ChevronDown className="w-4 h-4 transition-transform duration-200 group-hover:rotate-180" />
+              </button>
+              <div className="absolute top-full left-0 mt-1 w-48 bg-card rounded-2xl shadow-elevated border border-border/50 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                {moreLinks.map((link) => (
+                  <Link
+                    key={link.name}
+                    to={link.path}
+                    className="block px-4 py-2 text-sm text-foreground/80 hover:text-primary hover:bg-primary/10 transition-colors font-medium"
+                  >
+                    {link.name}
+                  </Link>
+                ))}
+              </div>
+            </li>
           </ul>
 
           {/* Actions */}
           <div className="flex items-center gap-1">
-            {/* Search */}
-            <div className={`${isSearchOpen ? 'flex' : 'hidden'} md:flex items-center`} ref={searchRef}>
+            {/* Search Form */}
+            <form onSubmit={handleSearchSubmit} className={`${isSearchOpen ? 'flex' : 'hidden'} md:flex items-center`} ref={searchRef}>
               <div className="relative group">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                 <Input
@@ -113,6 +149,11 @@ const Navbar = () => {
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setShowSearchResults(true); }}
                   onFocus={() => setShowSearchResults(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSearchSubmit(e);
+                    }
+                  }}
                   className="pl-10 w-48 lg:w-64 bg-secondary/50 border-2 border-primary/30 rounded-full focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 hover:border-primary/50"
                   aria-label="Search for masalas and spices"
                   role="combobox"
@@ -142,8 +183,8 @@ const Navbar = () => {
                           </Link>
                         ))}
                         <Link
-                          to={`/products?search=${searchQuery}`}
-                          onClick={() => { setShowSearchResults(false); setSearchQuery(''); }}
+                          to={`/products?search=${encodeURIComponent(searchQuery.trim())}`}
+                          onClick={() => { setShowSearchResults(false); }}
                           className="block text-center text-sm text-primary font-semibold py-2 border-t border-border mt-1 hover:bg-secondary/30"
                         >
                           View all results →
@@ -155,7 +196,7 @@ const Navbar = () => {
                   </div>
                 )}
               </div>
-            </div>
+            </form>
 
             <Button
               variant="ghost"
@@ -225,7 +266,7 @@ const Navbar = () => {
                   <DropdownMenuItem onClick={() => navigate('/wishlist')}>
                     Wishlist
                   </DropdownMenuItem>
-                  {user?.isAdmin && (
+                  {user?.role === 'admin' && (
                     <>
                       <DropdownMenuSeparator />
                       <div className="px-4 py-2 text-xs font-semibold text-orange-600">ADMIN</div>
@@ -243,6 +284,15 @@ const Navbar = () => {
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => navigate('/admin/orders')}>
                         Orders
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate('/admin/banners')}>
+                        Banners
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate('/admin/recipes')}>
+                        Recipes
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate('/admin/coupons')}>
+                        Coupons
                       </DropdownMenuItem>
                     </>
                   )}

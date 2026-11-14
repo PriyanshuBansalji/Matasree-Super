@@ -10,6 +10,13 @@ export interface IRecentlyViewedEntry {
   viewedAt: Date;
 }
 
+export interface ILoginHistoryEntry {
+  ip: string;
+  userAgent: string;
+  timestamp: Date;
+  success: boolean;
+}
+
 export interface IUser {
   _id: mongoose.Types.ObjectId;
   name: string;
@@ -27,6 +34,11 @@ export interface IUser {
   referralCode: string;
   loyaltyAccountId?: mongoose.Types.ObjectId;
   recentlyViewed: IRecentlyViewedEntry[];
+  failedLoginAttempts: number;
+  lockUntil?: Date;
+  lastLoginAt?: Date;
+  lastLoginIp?: string;
+  loginHistory: ILoginHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -104,6 +116,28 @@ const userSchema = new Schema<IUser>(
       ],
       default: [],
     },
+    failedLoginAttempts: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    lockUntil: {
+      type: Date,
+    },
+    lastLoginAt: {
+      type: Date,
+    },
+    lastLoginIp: {
+      type: String,
+    },
+    loginHistory: [
+      {
+        ip: String,
+        userAgent: String,
+        timestamp: { type: Date, default: Date.now },
+        success: Boolean,
+      }
+    ],
   },
   { timestamps: true }
 );

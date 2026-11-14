@@ -44,14 +44,19 @@ require("dotenv/config");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
-const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const path_1 = __importDefault(require("path"));
 const database_1 = require("./config/database");
 const errorHandler_1 = require("./middleware/errorHandler");
 const sanitizer_1 = require("./middleware/sanitizer");
+const csrf_1 = require("./middleware/csrf");
+const rateLimiter_1 = require("./middleware/rateLimiter");
 const passport_1 = __importStar(require("./config/passport"));
 const logger_1 = __importDefault(require("./config/logger"));
+// Jobs
+const cartAbandonmentJob_1 = require("./jobs/cartAbandonmentJob");
+const stockReleaseJob_1 = require("./jobs/stockReleaseJob");
+const scheduledPublishJob_1 = require("./jobs/scheduledPublishJob");
 // Routes
 const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
 const productRoutes_1 = __importDefault(require("./routes/productRoutes"));
@@ -65,6 +70,9 @@ const partnershipRoutes_1 = __importDefault(require("./routes/partnershipRoutes"
 const reviewRoutes_1 = __importDefault(require("./routes/reviewRoutes"));
 const couponRoutes_1 = __importDefault(require("./routes/couponRoutes"));
 const wishlistRoutes_1 = __importDefault(require("./routes/wishlistRoutes"));
+const loyaltyRoutes_1 = __importDefault(require("./routes/loyaltyRoutes"));
+const referralRoutes_1 = __importDefault(require("./routes/referralRoutes"));
+const webhookRoutes_1 = __importDefault(require("./routes/webhookRoutes"));
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5001;
 // ============================================================
@@ -76,14 +84,16 @@ app.use((0, helmet_1.default)({
         directives: {
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https:"],
-            scriptSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/"],
             imgSrc: ["'self'", "data:", "https:", "http:", "res.cloudinary.com"],
             mediaSrc: ["'self'", "data:"],
             fontSrc: ["'self'", "https:", "data:"],
-            connectSrc: ["'self'", "https://accounts.google.com", "https://github.com"],
+            connectSrc: ["'self'", "https://accounts.google.com", "https://github.com", "https://www.google.com/recaptcha/"],
+            frameSrc: ["'self'", "https://www.google.com/recaptcha/", "https://recaptcha.google.com/recaptcha/"],
         },
     },
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
 }));
 // CORS - allow frontend origins
 const allowedOrigins = [
@@ -109,27 +119,26 @@ app.use((0, cors_1.default)({
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 }));
 // Cookie parser for HTTP-only refresh token cookies
 app.use((0, cookie_parser_1.default)());
+// CSRF Protection
+app.use(csrf_1.csrfProtection);
 // Rate limiting
-const limiter = (0, express_rate_limit_1.default)({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000'),
-    message: 'Too many requests from this IP, please try again later.',
-    standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-    legacyHeaders: false, // Disable `X-RateLimit-*` headers
-});
+const limiter = (0, rateLimiter_1.userRateLimiter)(parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000', 10));
 // Stricter rate limit for auth routes
-const authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 20, // 20 attempts per window
-    message: 'Too many auth attempts. Please try again later.',
-});
+const authLimiter = (0, rateLimiter_1.userRateLimiter)(15 * 60 * 1000, // 15 minutes
+20, // 20 attempts per window
+'Too many auth attempts. Please try again later.');
 app.use(limiter);
-// Body parsing
-app.use(express_1.default.json({ limit: '10mb' }));
+// Body parsing (capturing rawBody for Webhook signature validation)
+app.use(express_1.default.json({
+    limit: '10mb',
+    verify: (req, _res, buf) => {
+        req.rawBody = buf.toString();
+    },
+}));
 app.use(express_1.default.urlencoded({ limit: '10mb', extended: true }));
 // Request sanitization
 app.use(sanitizer_1.sanitizeMongo); // NoSQL injection prevention
@@ -202,6 +211,10 @@ app.use('/api/partnership', partnershipRoutes_1.default);
 app.use('/api/reviews', reviewRoutes_1.default);
 app.use('/api/coupons', couponRoutes_1.default);
 app.use('/api/wishlist', wishlistRoutes_1.default);
+app.use('/api/loyalty', loyaltyRoutes_1.default);
+app.use('/api/referral', referralRoutes_1.default);
+app.use('/api/referrals', referralRoutes_1.default);
+app.use('/api/webhooks', webhookRoutes_1.default);
 // Health check
 app.get('/api/health', (req, res) => {
     res.status(200).json({
@@ -221,6 +234,9 @@ app.use(errorHandler_1.errorHandler);
 const startServer = async () => {
     try {
         await (0, database_1.connectDB)();
+        (0, cartAbandonmentJob_1.initCartAbandonmentJob)();
+        (0, stockReleaseJob_1.startStockReleaseJob)();
+        (0, scheduledPublishJob_1.initScheduledPublishJob)();
         app.listen(PORT, () => {
             logger_1.default.info(`✅ Server running on http://localhost:${PORT}`);
             logger_1.default.info(`📡 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:8080'}`);

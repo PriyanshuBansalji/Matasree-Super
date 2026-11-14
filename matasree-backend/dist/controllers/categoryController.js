@@ -18,7 +18,7 @@ const categorySchema = joi_1.default.object({
  */
 const getCategories = async (req, res) => {
     try {
-        const categories = await Category_1.default.find().sort({ name: 1 });
+        const categories = await Category_1.default.find().sort({ name: 1 }).lean();
         res.status(200).json(new response_1.ApiResponse(true, 'Categories fetched', categories));
     }
     catch (error) {
@@ -31,7 +31,7 @@ exports.getCategories = getCategories;
  */
 const getCategoryById = async (req, res) => {
     try {
-        const category = await Category_1.default.findById(req.params.id);
+        const category = await Category_1.default.findById(req.params.id).lean();
         if (!category) {
             return res.status(404).json(new response_1.ApiResponse(false, 'Category not found', null, 404));
         }
@@ -47,7 +47,7 @@ exports.getCategoryById = getCategoryById;
  */
 const createCategory = async (req, res) => {
     try {
-        const { error, value } = categorySchema.validate(req.body);
+        const { error, value } = categorySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
         if (error) {
             return res.status(400).json(new response_1.ApiResponse(false, error.details[0].message, null, 400));
         }
@@ -64,7 +64,7 @@ exports.createCategory = createCategory;
  */
 const updateCategory = async (req, res) => {
     try {
-        const { error, value } = categorySchema.validate(req.body, { stripUnknown: true });
+        const { error, value } = categorySchema.validate(req.body, { abortEarly: false, stripUnknown: true });
         if (error) {
             return res.status(400).json(new response_1.ApiResponse(false, error.details[0].message, null, 400));
         }

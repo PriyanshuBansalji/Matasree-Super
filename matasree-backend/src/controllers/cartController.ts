@@ -13,15 +13,18 @@ import Joi from 'joi';
 const addToCartSchema = Joi.object({
   productId: Joi.string().required(),
   quantity: Joi.number().integer().min(1).required(),
+  weight: Joi.string().required(),
 });
 
 const updateCartItemSchema = Joi.object({
   productId: Joi.string().required(),
   quantity: Joi.number().integer().min(1).required(),
+  weight: Joi.string().required(),
 });
 
 const removeFromCartSchema = Joi.object({
   productId: Joi.string().required(),
+  weight: Joi.string().required(),
 });
 
 /**
@@ -51,14 +54,19 @@ export const addToCart = async (req: any, res: Response) => {
       return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
-    const { productId, quantity } = value;
+    const { productId, quantity, weight } = value;
 
     const product = await Product.findById(productId);
     if (!product) {
       return res.status(404).json(new ApiResponse(false, 'Product not found', null, 404));
     }
 
-    if (product.stock < quantity) {
+    // Find live weight variant details
+    const variant = product.variants.find((v) => v.weight === weight);
+    const livePrice = variant ? variant.price : product.price;
+    const liveStock = variant ? variant.stock : product.stock;
+
+    if (liveStock < quantity) {
       return res.status(400).json(new ApiResponse(false, 'Insufficient stock', null, 400));
     }
 
@@ -67,16 +75,22 @@ export const addToCart = async (req: any, res: Response) => {
     if (!cart) {
       cart = await Cart.create({
         userId: req.user?.userId,
-        items: [{ productId, quantity, price: product.price }],
+        items: [{ productId, quantity, price: livePrice, weight }],
+        abandonmentEmailSentAt: null, // fresh cart — reset abandonment tracker
       });
     } else {
-      const existingItem = cart.items.find((item) => item.productId.toString() === productId);
+      const existingItem = cart.items.find(
+        (item) => item.productId.toString() === productId && item.weight === weight
+      );
 
       if (existingItem) {
         existingItem.quantity += quantity;
       } else {
-        cart.items.push({ productId, quantity, price: product.price, addedAt: new Date() } as any);
+        cart.items.push({ productId, quantity, price: livePrice, weight, addedAt: new Date() } as any);
       }
+
+      // Reset abandonment tracker whenever items are modified (user is active again)
+      cart.abandonmentEmailSentAt = undefined as any;
 
       await cart.save();
     }
@@ -98,14 +112,16 @@ export const updateCartItem = async (req: any, res: Response) => {
       return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
-    const { productId, quantity } = value;
+    const { productId, quantity, weight } = value;
 
     const cart = await Cart.findOne({ userId: req.user?.userId });
     if (!cart) {
       return res.status(404).json(new ApiResponse(false, 'Cart not found', null, 404));
     }
 
-    const item = cart.items.find((item) => item.productId.toString() === productId);
+    const item = cart.items.find(
+      (item) => item.productId.toString() === productId && item.weight === weight
+    );
     if (!item) {
       return res.status(404).json(new ApiResponse(false, 'Item not in cart', null, 404));
     }
@@ -130,14 +146,16 @@ export const removeFromCart = async (req: any, res: Response) => {
       return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
-    const { productId } = value;
+    const { productId, weight } = value;
 
     const cart = await Cart.findOne({ userId: req.user?.userId });
     if (!cart) {
       return res.status(404).json(new ApiResponse(false, 'Cart not found', null, 404));
     }
 
-    cart.items = cart.items.filter((item) => item.productId.toString() !== productId);
+    cart.items = cart.items.filter(
+      (item) => !(item.productId.toString() === productId && item.weight === weight)
+    );
     await cart.save();
 
     const populatedCart = await Cart.findById(cart._id).populate('items.productId');
@@ -152,7 +170,11 @@ export const removeFromCart = async (req: any, res: Response) => {
  */
 export const clearCart = async (req: any, res: Response) => {
   try {
-    await Cart.findOneAndUpdate({ userId: req.user?.userId }, { items: [] }, { new: true });
+    await Cart.findOneAndUpdate(
+      { userId: req.user?.userId },
+      { items: [], $unset: { abandonmentEmailSentAt: '' } },
+      { new: true }
+    );
     res.status(200).json(new ApiResponse(true, 'Cart cleared'));
   } catch (error: any) {
     res.status(500).json(new ApiResponse(false, error.message || 'Failed to clear cart', null, 500));
@@ -176,7 +198,7 @@ export const clearCart = async (req: any, res: Response) => {
 export const syncCart = async (req: any, res: Response) => {
   try {
     const { items: clientItems } = req.body as {
-      items: Array<{ productId: string; quantity: number; clientPrice: number }>;
+      items: Array<{ productId: string; quantity: number; clientPrice: number; weight: string }>;
     };
 
     // Validate request body
@@ -194,14 +216,15 @@ export const syncCart = async (req: any, res: Response) => {
         typeof item.quantity !== 'number' ||
         item.quantity < 1 ||
         typeof item.clientPrice !== 'number' ||
-        item.clientPrice < 0
+        item.clientPrice < 0 ||
+        typeof item.weight !== 'string'
       ) {
         return res
           .status(400)
           .json(
             new ApiResponse(
               false,
-              'Each item must have a valid productId, a positive quantity, and a non-negative clientPrice',
+              'Each item must have a valid productId, weight, positive quantity, and non-negative clientPrice',
               null,
               400,
             ),
@@ -224,16 +247,19 @@ export const syncCart = async (req: any, res: Response) => {
       productId: mongoose.Types.ObjectId;
       quantity: number;
       price: number;
+      weight: string;
     }> = [];
 
     const priceDiffs: Array<{
       productId: string;
+      weight: string;
       oldPrice: number;
       newPrice: number;
     }> = [];
 
     const removedItems: Array<{
       productId: string;
+      weight: string;
       quantity: number;
       clientPrice: number;
     }> = [];
@@ -241,10 +267,26 @@ export const syncCart = async (req: any, res: Response) => {
     for (const clientItem of clientItems) {
       const live = liveMap.get(clientItem.productId);
 
-      // Remove items whose product is gone or out of stock (Req 24.2)
-      if (!live || live.stock === 0) {
+      if (!live) {
         removedItems.push({
           productId: clientItem.productId,
+          weight: clientItem.weight,
+          quantity: clientItem.quantity,
+          clientPrice: clientItem.clientPrice,
+        });
+        continue;
+      }
+
+      // Reconcile against specific weight variant
+      const variant = live.variants.find((v) => v.weight === clientItem.weight);
+      const livePrice = variant ? variant.price : live.price;
+      const liveStock = variant ? variant.stock : live.stock;
+
+      // Remove items whose product/variant is out of stock (Req 24.2)
+      if (liveStock === 0) {
+        removedItems.push({
+          productId: clientItem.productId,
+          weight: clientItem.weight,
           quantity: clientItem.quantity,
           clientPrice: clientItem.clientPrice,
         });
@@ -252,19 +294,21 @@ export const syncCart = async (req: any, res: Response) => {
       }
 
       // Record price changes (Req 24.3)
-      if (live.price !== clientItem.clientPrice) {
+      if (livePrice !== clientItem.clientPrice) {
         priceDiffs.push({
           productId: clientItem.productId,
+          weight: clientItem.weight,
           oldPrice: clientItem.clientPrice,
-          newPrice: live.price,
+          newPrice: livePrice,
         });
       }
 
       // Cap quantity at available stock (Req 24.1)
       syncedItems.push({
         productId: live._id,
-        quantity: Math.min(clientItem.quantity, live.stock),
-        price: live.price,
+        quantity: Math.min(clientItem.quantity, liveStock),
+        price: livePrice,
+        weight: clientItem.weight,
       });
     }
 

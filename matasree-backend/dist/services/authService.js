@@ -136,6 +136,7 @@ const rotateRefreshToken = async (oldRefreshToken, res, meta) => {
             email: user.email,
             role: user.role,
             avatar: user.avatar,
+            isAdmin: user.role === 'admin',
         },
     };
 };

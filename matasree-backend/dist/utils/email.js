@@ -3,20 +3,170 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendOrderConfirmationEmail = exports.verifyEmailConnection = exports.sendOTPSMS = exports.sendOTPEmail = exports.sendEmail = void 0;
+exports.sendSystemAlertEmail = exports.sendFailedPaymentAdminAlert = exports.sendNewOrderAdminNotificationEmail = exports.sendLowStockNotificationEmail = exports.sendPromotionalEmail = exports.sendNewsletterWelcomeEmail = exports.sendAdminContactAlertEmail = exports.sendCustomerSupportReplyEmail = exports.sendContactReceiptEmail = exports.sendRefundCompletedEmail = exports.sendRefundInitiatedEmail = exports.sendCancelledEmail = exports.sendDeliveredEmail = exports.sendOutForDeliveryEmail = exports.sendShippedEmail = exports.sendPaymentFailureEmail = exports.sendPaymentSuccessEmail = exports.sendOrderConfirmationEmail = exports.sendOTPSMS = exports.sendAccountDeletionEmail = exports.sendEmailChangeVerification = exports.sendPasswordChangedNotification = exports.sendPasswordResetEmail = exports.sendLoginOTPEmail = exports.sendOTPEmail = exports.sendWelcomeEmail = exports.verifyEmailConnection = exports.sendEmail = exports.wrapInTemplate = exports.transporter = exports.stripHtml = exports.sanitizeHeader = exports.escapeHtml = exports.getAdminEmail = exports.getReplyToAddress = exports.getSenderString = void 0;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const twilio_1 = __importDefault(require("twilio"));
-// Email transporter
-const transporter = nodemailer_1.default.createTransport({
-    service: process.env.EMAIL_SERVICE || 'gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
-    },
+// ============================================================================
+// Professional Sender Configuration & Environment Helpers
+// Official Sender: Matasree Super <admin@matasreesuper.com>
+// ============================================================================
+const getSenderString = () => {
+    const name = process.env.MAIL_FROM_NAME || 'Matasree Super';
+    const address = process.env.MAIL_FROM_ADDRESS || process.env.EMAIL_USER || 'admin@matasreesuper.com';
+    return `"${name}" <${address}>`;
+};
+exports.getSenderString = getSenderString;
+const getReplyToAddress = () => {
+    return process.env.REPLY_TO_ADDRESS || process.env.MAIL_FROM_ADDRESS || process.env.EMAIL_USER || 'admin@matasreesuper.com';
+};
+exports.getReplyToAddress = getReplyToAddress;
+const getAdminEmail = () => {
+    return process.env.ADMIN_EMAIL || 'admin@matasreesuper.com';
+};
+exports.getAdminEmail = getAdminEmail;
+// ============================================================================
+// Security & Sanitization Helpers
+// ============================================================================
+/**
+ * Escape HTML special characters to prevent HTML Injection / XSS in emails
+ */
+const escapeHtml = (str) => {
+    if (!str)
+        return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+exports.escapeHtml = escapeHtml;
+/**
+ * Sanitize email header fields to prevent Header Injection attacks (CRLF stripping)
+ */
+const sanitizeHeader = (value) => {
+    if (!value)
+        return '';
+    return String(value).replace(/[\r\n]/g, '').trim();
+};
+exports.sanitizeHeader = sanitizeHeader;
+/**
+ * Strip HTML tags to create plain text version of email
+ */
+const stripHtml = (html) => {
+    return html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+exports.stripHtml = stripHtml;
+// ============================================================================
+// Production Resilient Transporter Setup
+// ============================================================================
+const createProductionTransporter = () => {
+    const host = process.env.SMTP_HOST;
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
+    const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+    const user = process.env.SMTP_USER || process.env.EMAIL_USER || 'admin@matasreesuper.com';
+    const pass = process.env.SMTP_PASS || process.env.EMAIL_PASSWORD || '';
+    const service = process.env.EMAIL_SERVICE;
+    let transportConfig;
+    if (host && host.trim() !== '') {
+        transportConfig = {
+            host: host.trim(),
+            port,
+            secure,
+            auth: { user: user.trim(), pass },
+            pool: true,
+            maxConnections: 5,
+            maxMessages: 100,
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 10000,
+            tls: {
+                rejectUnauthorized: false, // Compatibility for custom SMTP servers
+            },
+        };
+    }
+    else if (service && service !== 'smtp') {
+        transportConfig = {
+            service,
+            auth: { user: user.trim(), pass },
+            connectionTimeout: 10000,
+            socketTimeout: 10000,
+        };
+    }
+    else {
+        // Default fallback
+        transportConfig = {
+            host: 'smtp.matasree.com',
+            port: 587,
+            secure: false,
+            auth: { user: user.trim(), pass },
+            connectionTimeout: 10000,
+            socketTimeout: 10000,
+            tls: { rejectUnauthorized: false },
+        };
+    }
+    return nodemailer_1.default.createTransport(transportConfig);
+};
+exports.transporter = createProductionTransporter();
+// Verify SMTP connection on startup & fallback gracefully to mock console transport if SMTP fails
+exports.transporter.verify((error) => {
+    if (error) {
+        console.warn('⚠️  SMTP Transporter connection failed. Falling back to Mock Console Transporter.');
+        console.warn(`   Error detail: ${error.message}`);
+        exports.transporter = {
+            sendMail: async (mailOptions) => {
+                console.log('\n=================== MOCK EMAIL SENT (utils/email) ===================');
+                console.log('FROM:', mailOptions.from);
+                console.log('TO:', mailOptions.to);
+                console.log('REPLY-TO:', mailOptions.replyTo);
+                console.log('SUBJECT:', mailOptions.subject);
+                console.log('HTML (preview):', mailOptions.html ? (0, exports.stripHtml)(mailOptions.html).substring(0, 250) + '...' : '(text only)');
+                console.log('====================================================================\n');
+                return { messageId: `mock-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, response: '250 Mock OK' };
+            },
+            verify: async () => true,
+        };
+    }
+    else {
+        console.log(`✅ SMTP Transporter initialized successfully for ${(0, exports.getSenderString)()}`);
+    }
 });
-// Twilio client for SMS
+/**
+ * Resilient sendMail helper with retry logic for transient SMTP errors
+ */
+const sendMailWithRetry = async (mailOptions, retries = 2) => {
+    mailOptions.from = mailOptions.from || (0, exports.getSenderString)();
+    mailOptions.replyTo = mailOptions.replyTo || (0, exports.getReplyToAddress)();
+    mailOptions.subject = (0, exports.sanitizeHeader)(mailOptions.subject);
+    if (!mailOptions.text && mailOptions.html) {
+        mailOptions.text = (0, exports.stripHtml)(mailOptions.html);
+    }
+    let attempt = 0;
+    while (attempt <= retries) {
+        try {
+            return await exports.transporter.sendMail(mailOptions);
+        }
+        catch (err) {
+            attempt++;
+            console.warn(`⚠️  Email send attempt ${attempt}/${retries + 1} failed for ${mailOptions.to}: ${err.message}`);
+            if (attempt > retries) {
+                console.error(`❌ Permanent failure sending email to ${mailOptions.to}:`, err.message);
+                throw err;
+            }
+            // Wait before retrying (exponential backoff 500ms, 1000ms)
+            await new Promise((res) => setTimeout(res, attempt * 500));
+        }
+    }
+};
+// ============================================================================
+// Twilio SMS Integration (Resilient Stub / Live Client)
+// ============================================================================
 let twilioClient = null;
-// Initialize Twilio if valid credentials are provided
 if (process.env.TWILIO_ACCOUNT_SID &&
     process.env.TWILIO_AUTH_TOKEN &&
     process.env.TWILIO_ACCOUNT_SID.startsWith('AC') &&
@@ -30,22 +180,73 @@ if (process.env.TWILIO_ACCOUNT_SID &&
     }
 }
 else {
-    console.warn('⚠️  SMS (Twilio) is not configured. Mobile OTP will not be delivered.');
-    console.warn('   To enable SMS, add valid TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER to .env');
+    console.warn('⚠️  SMS (Twilio) is not configured. Mobile OTP will log to console in dev.');
 }
+// ============================================================================
+// Branded Responsive HTML Template Wrapper
+// ============================================================================
+const wrapInTemplate = (title, contentHtml) => {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${(0, exports.escapeHtml)(title)} - Matasree Super</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f8; margin: 0; padding: 0; color: #333333; -webkit-font-smoothing: antialiased; }
+    .email-container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); overflow: hidden; }
+    .header { background: linear-gradient(135deg, #ff8c00 0%, #e65c00 100%); padding: 30px 40px; text-align: center; color: #ffffff; }
+    .logo { font-size: 28px; font-weight: 800; letter-spacing: 1px; color: #ffffff; text-decoration: none; display: inline-block; }
+    .tagline { color: rgba(255,255,255,0.9); font-size: 13px; margin-top: 4px; font-weight: 500; }
+    .body { padding: 35px 40px; line-height: 1.6; }
+    .h1 { font-size: 22px; font-weight: 700; color: #111827; margin-top: 0; margin-bottom: 16px; }
+    .p { margin-top: 0; margin-bottom: 16px; font-size: 15px; color: #4b5563; }
+    .btn { display: inline-block; background: linear-gradient(135deg, #ff8c00 0%, #e65c00 100%); color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 15px; font-weight: 700; text-align: center; margin: 20px 0; box-shadow: 0 2px 8px rgba(255,140,0,0.3); }
+    .card { background-color: #fff8f0; border: 1px solid #ffe6cc; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    .footer { background-color: #f9fafb; padding: 25px 40px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #f3f4f6; }
+    .footer a { color: #ff8c00; text-decoration: none; font-weight: 600; }
+    @media only screen and (max-width: 600px) {
+      .email-container { margin: 0; width: 100% !important; border-radius: 0; }
+      .header, .body, .footer { padding: 25px 20px !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo">🌶️ Matasree Super</div>
+      <div class="tagline">Premium Spices &amp; Authentic Masalas</div>
+    </div>
+    <div class="body">
+      ${contentHtml}
+    </div>
+    <div class="footer">
+      <p style="margin:0 0 8px 0;">© 2026 Matasree Super. All rights reserved.</p>
+      <p style="margin:0 0 8px 0;">Clement Town, Dehradun, Uttarakhand, India</p>
+      <p style="margin:0;">Official Support: <a href="mailto:admin@matasreesuper.com">admin@matasreesuper.com</a> | <a href="${process.env.FRONTEND_URL || 'http://localhost:8000'}">Visit Store</a></p>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+exports.wrapInTemplate = wrapInTemplate;
+// ============================================================================
+// Core Email Helper Functions
+// ============================================================================
 /**
- * Send generic email with custom HTML
+ * Generic email sender helper
  */
 const sendEmail = async (options) => {
     try {
         const mailOptions = {
-            from: `Matasree <${process.env.EMAIL_USER}>`,
-            to: options.email,
+            from: (0, exports.getSenderString)(),
+            to: (0, exports.sanitizeHeader)(options.email),
             subject: options.subject,
             html: options.html,
+            text: options.text || (0, exports.stripHtml)(options.html),
         };
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ Email sent to ${options.email}: ${info.response}`);
+        const info = await sendMailWithRetry(mailOptions);
+        console.log(`✅ Email sent to ${options.email}: ${info.response || info.messageId}`);
         return true;
     }
     catch (error) {
@@ -55,272 +256,641 @@ const sendEmail = async (options) => {
 };
 exports.sendEmail = sendEmail;
 /**
- * Send OTP email
+ * Verify Email Connection
  */
-const sendOTPEmail = async (email, otp) => {
+const verifyEmailConnection = async () => {
     try {
-        const mailOptions = {
-            from: `Matasree <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: 'Your Email Verification OTP - Matasree',
-            html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body { font-family: Arial, sans-serif; background-color: #f5f5f5; }
-            .container { max-width: 600px; margin: 20px auto; background-color: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-            .header { text-align: center; margin-bottom: 30px; }
-            .logo { font-size: 24px; font-weight: bold; color: #ff8c00; }
-            .content { text-align: center; margin: 30px 0; }
-            .otp-box { background-color: #fff8f0; border: 2px solid #ff8c00; border-radius: 8px; padding: 20px; margin: 30px 0; }
-            .otp-code { font-size: 32px; font-weight: bold; color: #ff8c00; letter-spacing: 4px; }
-            .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="logo">🌶️ Matasree</div>
-              <p style="color: #666; margin-top: 5px;">Premium Spices & Masalas</p>
-            </div>
-            
-            <div class="content">
-              <h2 style="color: #333;">Email Verification</h2>
-              <p style="color: #666; font-size: 14px;">We received a request to verify your email address. Please use the code below to complete your registration.</p>
-              
-              <div class="otp-box">
-                <p style="color: #666; margin: 0 0 10px 0; font-size: 12px;">YOUR VERIFICATION CODE</p>
-                <div class="otp-code">${otp}</div>
-                <p style="color: #ff8c00; margin: 10px 0 0 0; font-size: 12px; font-weight: bold;">Valid for 5 minutes</p>
-              </div>
-              
-              <p style="color: #999; font-size: 13px;">If you did not request this code, please ignore this email or contact our support team.</p>
-            </div>
-            
-            <div class="footer">
-              <p>© 2026 Matasree. All rights reserved.</p>
-              <p>This is an automated message, please do not reply to this email.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
-        };
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ Email sent to ${email}: ${info.response}`);
+        await exports.transporter.verify();
+        console.log('✅ Email transporter connection verified successfully');
         return true;
     }
     catch (error) {
-        console.error(`❌ Failed to send email to ${email}:`, error.message);
+        console.error('❌ Email transporter connection verification failed:', error.message);
         return false;
     }
 };
+exports.verifyEmailConnection = verifyEmailConnection;
+// ============================================================================
+// 1. User Authentication Emails
+// ============================================================================
+/**
+ * User Registration Welcome Email
+ */
+const sendWelcomeEmail = async (email, name) => {
+    const safeName = (0, exports.escapeHtml)(name || 'Valued Customer');
+    const html = (0, exports.wrapInTemplate)('Welcome to Matasree Super', `<h1 class="h1">Welcome to Matasree Super, ${safeName}! 🎉</h1>
+     <p class="p">We are thrilled to welcome you to the Matasree family! For over 40 years, we have been crafting 100% pure, stone-ground traditional spices and masalas.</p>
+     <div class="card">
+       <h3 style="margin:0 0 10px 0;color:#ff8c00;">What you can explore:</h3>
+       <ul style="margin:0;padding-left:20px;color:#4b5563;font-size:14px;">
+         <li>Pure single spices & handcrafted spice blends</li>
+         <li>Fast & secure delivery across India</li>
+         <li>Exclusive member-only discounts & loyalty rewards</li>
+       </ul>
+     </div>
+     <div style="text-align:center;">
+       <a href="${process.env.FRONTEND_URL || 'http://localhost:8000'}/products" class="btn">Explore Our Spices →</a>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: 'Welcome to Matasree Super - Pure & Authentic Spices!',
+        html,
+    });
+};
+exports.sendWelcomeEmail = sendWelcomeEmail;
+/**
+ * Email Verification OTP Email
+ */
+const sendOTPEmail = async (email, otp) => {
+    const safeOtp = (0, exports.escapeHtml)(otp);
+    const html = (0, exports.wrapInTemplate)('Verify Your Email', `<h1 class="h1">Email Verification</h1>
+     <p class="p">Please use the verification code below to verify your email address and activate your account.</p>
+     <div class="card" style="text-align:center;padding:25px;">
+       <p style="margin:0 0 8px 0;color:#6b7280;font-size:12px;font-weight:700;letter-spacing:1px;">YOUR VERIFICATION CODE</p>
+       <div style="font-size:36px;font-weight:800;color:#ff8c00;letter-spacing:6px;font-family:monospace;">${safeOtp}</div>
+       <p style="margin:12px 0 0 0;color:#e65c00;font-size:12px;font-weight:600;">Valid for 5 minutes • Single-use only</p>
+     </div>
+     <p class="p" style="font-size:13px;color:#9ca3af;">If you did not request this verification code, please ignore this email.</p>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: 'Your Email Verification OTP - Matasree Super',
+        html,
+    });
+};
 exports.sendOTPEmail = sendOTPEmail;
 /**
- * Send SMS OTP via Twilio.
- *
- * @stub Twilio SMS integration is a stub. Configure TWILIO_ACCOUNT_SID,
- * TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in .env to enable live SMS delivery.
- *
- * When Twilio credentials are absent the function returns `false` and logs a
- * warning instead of throwing an unhandled exception.
- *
- * Required environment variables:
- *   - TWILIO_ACCOUNT_SID  — Twilio Account SID (must start with "AC")
- *   - TWILIO_AUTH_TOKEN   — Twilio Auth Token
- *   - TWILIO_PHONE_NUMBER — Twilio sender phone number (E.164 format, e.g. +1234567890)
+ * Login OTP Email
+ */
+const sendLoginOTPEmail = async (email, otp, name) => {
+    const safeName = (0, exports.escapeHtml)(name || 'User');
+    const safeOtp = (0, exports.escapeHtml)(otp);
+    const html = (0, exports.wrapInTemplate)('Login Verification Code', `<h1 class="h1">Hello ${safeName},</h1>
+     <p class="p">We received a request to log in to your Matasree Super account.</p>
+     <div class="card" style="text-align:center;padding:25px;">
+       <p style="margin:0 0 8px 0;color:#6b7280;font-size:12px;font-weight:700;letter-spacing:1px;">YOUR LOGIN OTP</p>
+       <div style="font-size:36px;font-weight:800;color:#ff8c00;letter-spacing:6px;font-family:monospace;">${safeOtp}</div>
+       <p style="margin:12px 0 0 0;color:#e65c00;font-size:12px;font-weight:600;">Valid for 5 minutes • Do not share this code</p>
+     </div>
+     <p class="p" style="font-size:13px;color:#9ca3af;">For security reasons, never share your OTP with anyone. Our support team will never ask for your OTP.</p>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: 'Your Login Verification Code - Matasree Super',
+        html,
+    });
+};
+exports.sendLoginOTPEmail = sendLoginOTPEmail;
+/**
+ * Password Reset Email
+ */
+const sendPasswordResetEmail = async (email, resetTokenOrOtp, name) => {
+    const safeName = (0, exports.escapeHtml)(name || 'Customer');
+    const safeToken = (0, exports.escapeHtml)(resetTokenOrOtp);
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:8000'}/reset-password?token=${safeToken}&email=${encodeURIComponent(email)}`;
+    const html = (0, exports.wrapInTemplate)('Reset Your Password', `<h1 class="h1">Password Reset Request</h1>
+     <p class="p">Hello ${safeName}, we received a request to reset the password for your Matasree Super account.</p>
+     <div class="card" style="text-align:center;">
+       <p style="margin:0 0 10px 0;color:#374151;font-weight:600;">Click the button below to set a new password:</p>
+       <a href="${resetUrl}" class="btn">Reset Password Now</a>
+       <p style="margin:12px 0 0 0;font-size:12px;color:#6b7280;">Or use reset code: <strong style="color:#ff8c00;font-family:monospace;font-size:16px;">${safeToken}</strong></p>
+     </div>
+     <p class="p" style="font-size:13px;color:#9ca3af;">This password reset request expires in 15 minutes. If you did not request a password reset, your account is safe and no action is required.</p>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: 'Password Reset Request - Matasree Super',
+        html,
+    });
+};
+exports.sendPasswordResetEmail = sendPasswordResetEmail;
+/**
+ * Password Changed Notification
+ */
+const sendPasswordChangedNotification = async (email, name) => {
+    const safeName = (0, exports.escapeHtml)(name || 'Customer');
+    const html = (0, exports.wrapInTemplate)('Password Changed Confirmation', `<h1 class="h1">Password Changed Successfully</h1>
+     <p class="p">Hello ${safeName}, this is confirmation that the password for your Matasree Super account was successfully updated.</p>
+     <div class="card">
+       <p style="margin:0;color:#b91c1c;font-size:14px;font-weight:600;">⚠️ Didn't make this change?</p>
+       <p style="margin:5px 0 0 0;color:#4b5563;font-size:13px;">If you did not perform this change, please immediately contact our support team at <a href="mailto:admin@matasreesuper.com" style="color:#ff8c00;font-weight:700;">admin@matasreesuper.com</a> to secure your account.</p>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: 'Security Alert: Your Password Was Changed - Matasree Super',
+        html,
+    });
+};
+exports.sendPasswordChangedNotification = sendPasswordChangedNotification;
+/**
+ * Email Change Verification
+ */
+const sendEmailChangeVerification = async (email, newEmail, otp) => {
+    const safeOtp = (0, exports.escapeHtml)(otp);
+    const safeNewEmail = (0, exports.escapeHtml)(newEmail);
+    const html = (0, exports.wrapInTemplate)('Verify New Email Address', `<h1 class="h1">Verify Email Address Change</h1>
+     <p class="p">We received a request to change your Matasree Super account email to <strong>${safeNewEmail}</strong>.</p>
+     <div class="card" style="text-align:center;padding:25px;">
+       <p style="margin:0 0 8px 0;color:#6b7280;font-size:12px;font-weight:700;">CONFIRMATION CODE</p>
+       <div style="font-size:36px;font-weight:800;color:#ff8c00;letter-spacing:6px;font-family:monospace;">${safeOtp}</div>
+       <p style="margin:12px 0 0 0;color:#e65c00;font-size:12px;">Valid for 10 minutes</p>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: newEmail,
+        subject: 'Verify Your New Email Address - Matasree Super',
+        html,
+    });
+};
+exports.sendEmailChangeVerification = sendEmailChangeVerification;
+/**
+ * Account Deletion Confirmation
+ */
+const sendAccountDeletionEmail = async (email, name) => {
+    const safeName = (0, exports.escapeHtml)(name || 'Valued Customer');
+    const html = (0, exports.wrapInTemplate)('Account Deleted', `<h1 class="h1">Account Deletion Confirmed</h1>
+     <p class="p">Hello ${safeName}, as requested, your Matasree Super account and associated personal profile details have been permanently removed from our active database.</p>
+     <p class="p">We are sorry to see you go! If you ever decide to return, you are welcome to register a new account anytime.</p>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: 'Account Deletion Confirmed - Matasree Super',
+        html,
+    });
+};
+exports.sendAccountDeletionEmail = sendAccountDeletionEmail;
+/**
+ * SMS OTP via Twilio with fallback logger
  */
 const sendOTPSMS = async (mobile, otp) => {
-    // Guard: return false immediately when Twilio is not configured (no exception)
     if (!twilioClient) {
-        console.warn('⚠️  SMS (Twilio) is not configured. Mobile OTP will not be delivered.');
-        console.log(`   [DEV] SMS OTP for ${mobile}: ${otp}`);
+        console.warn('⚠️ SMS (Twilio) is not configured. Mobile OTP logged for development:');
+        console.log(`📱 [DEV SMS] Mobile: ${mobile} | OTP: ${otp}`);
         return false;
     }
     try {
-        console.log(`📱 Sending SMS OTP to ${mobile}: ${otp}`);
-        // Validate and format mobile number
-        let formattedMobile = mobile.trim();
-        // Remove any spaces, hyphens, or parentheses
-        formattedMobile = formattedMobile.replace(/[\s\-\(\)]/g, '');
-        // Add +91 prefix if not already present (for India)
+        let formattedMobile = mobile.trim().replace(/[\s\-\(\)]/g, '');
         if (!formattedMobile.startsWith('+')) {
             if (formattedMobile.startsWith('91')) {
                 formattedMobile = '+' + formattedMobile;
             }
             else if (formattedMobile.length === 10) {
-                // Just the 10-digit number
                 formattedMobile = '+91' + formattedMobile;
             }
             else {
-                formattedMobile = '+91' + formattedMobile.replace(/^0+/, ''); // Remove leading 0
+                formattedMobile = '+91' + formattedMobile.replace(/^0+/, '');
             }
         }
-        console.log(`📱 Formatted mobile number: ${formattedMobile}`);
-        // Send SMS via Twilio
         const message = await twilioClient.messages.create({
             body: `Your Matasree verification code is: ${otp}. Valid for 5 minutes.`,
             from: process.env.TWILIO_PHONE_NUMBER,
             to: formattedMobile,
         });
-        console.log(`✅ SMS sent successfully to ${formattedMobile}. Message SID: ${message.sid}`);
+        console.log(`✅ SMS sent to ${formattedMobile}. Message SID: ${message.sid}`);
         return true;
     }
     catch (error) {
         console.error(`❌ Failed to send SMS to ${mobile}:`, error.message);
-        // Fallback: notify admin of the failure
-        if (process.env.ADMIN_EMAIL) {
-            try {
-                const mailOptions = {
-                    from: `Matasree <${process.env.EMAIL_USER}>`,
-                    to: process.env.ADMIN_EMAIL,
-                    subject: `[ALERT] SMS OTP Failed for ${mobile}`,
-                    html: `
-            <p style="color: #d32f2f;"><strong>⚠️ SMS Sending Failed</strong></p>
-            <p><strong>Mobile:</strong> ${mobile}</p>
-            <p><strong>Error:</strong> ${error.message}</p>
-            <p><strong>OTP (for manual entry):</strong> <code style="font-size: 18px; font-weight: bold;">${otp}</code></p>
-            <p style="font-size: 12px; color: #666;"><strong>Note:</strong> Twilio free trial can only send to verified numbers. Add the number in Twilio console.</p>
-          `,
-                };
-                await transporter.sendMail(mailOptions);
-            }
-            catch (emailError) {
-                console.warn('Could not notify admin of SMS failure');
-            }
-        }
         return false;
     }
 };
 exports.sendOTPSMS = sendOTPSMS;
 /**
- * Verify transporter connection
- */
-const verifyEmailConnection = async () => {
-    try {
-        await transporter.verify();
-        console.log('✅ Email transporter verified successfully');
-        return true;
-    }
-    catch (error) {
-        console.error('❌ Email transporter verification failed:', error.message);
-        return false;
-    }
-};
-exports.verifyEmailConnection = verifyEmailConnection;
-/**
- * Send order confirmation email
+ * Order Confirmation Email
  */
 const sendOrderConfirmationEmail = async (order, recipientEmail) => {
-    try {
-        const paymentBadge = order.paymentMethod === 'cod'
-            ? `<span style="background-color:#f59e0b;color:#fff;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:bold;">💵 Cash on Delivery</span>
-           <p style="color:#555;font-size:13px;margin:8px 0 0 0;">Pay when your order arrives</p>`
-            : `<span style="background-color:#22c55e;color:#fff;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:bold;">✅ Online Payment</span>
-           <p style="color:#555;font-size:13px;margin:8px 0 0 0;">Payment confirmed</p>`;
-        const itemRows = order.items
-            .map((item) => `
-        <tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;">${item.name}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:center;">${item.quantity}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;">₹${(item.price * item.quantity).toFixed(2)}</td>
-        </tr>`)
-            .join('');
-        const addr = order.shippingAddress;
-        const addressBlock = [
-            addr.fullName,
-            addr.addressLine1,
-            addr.addressLine2,
-            `${addr.city}, ${addr.state} - ${addr.pincode}`,
-            `📞 ${addr.phone}`,
-        ]
-            .filter(Boolean)
-            .join('<br>');
-        const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; background-color: #f5f5f5; margin: 0; padding: 0; }
-          .container { max-width: 600px; margin: 20px auto; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
-          .header { background: linear-gradient(135deg, #ff8c00, #e65c00); padding: 30px 40px; text-align: center; }
-          .logo { font-size: 28px; font-weight: bold; color: #fff; }
-          .tagline { color: rgba(255,255,255,0.85); font-size: 13px; margin-top: 4px; }
-          .body { padding: 30px 40px; }
-          .section-title { font-size: 15px; font-weight: bold; color: #333; margin: 24px 0 10px 0; border-left: 4px solid #ff8c00; padding-left: 10px; }
-          table { width: 100%; border-collapse: collapse; font-size: 14px; }
-          thead tr { background-color: #fff8f0; }
-          thead th { padding: 10px 12px; text-align: left; color: #ff8c00; font-weight: bold; border-bottom: 2px solid #ff8c00; }
-          thead th:nth-child(2) { text-align: center; }
-          thead th:nth-child(3) { text-align: right; }
-          .total-row td { padding: 12px; font-weight: bold; font-size: 15px; color: #333; border-top: 2px solid #ff8c00; }
-          .address-box { background-color: #f9f9f9; border: 1px solid #eee; border-radius: 6px; padding: 14px 16px; font-size: 14px; color: #444; line-height: 1.7; }
-          .payment-box { margin-top: 8px; }
-          .footer { background-color: #f5f5f5; text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #eee; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <div class="logo">🌶️ Matasree</div>
-            <div class="tagline">Premium Spices &amp; Masalas</div>
-          </div>
+    const safeOrderNum = (0, exports.escapeHtml)(order.orderNumber);
+    const paymentBadge = order.paymentMethod === 'cod'
+        ? `<span style="background-color:#f59e0b;color:#fff;padding:6px 14px;border-radius:12px;font-size:13px;font-weight:700;">💵 Cash on Delivery</span>`
+        : `<span style="background-color:#22c55e;color:#fff;padding:6px 14px;border-radius:12px;font-size:13px;font-weight:700;">✅ Online Payment Confirmed</span>`;
+    const itemRows = order.items
+        .map((item) => `
+      <tr>
+        <td style="padding:12px;border-bottom:1px solid #f3f4f6;font-weight:600;">${(0, exports.escapeHtml)(item.name)}</td>
+        <td style="padding:12px;border-bottom:1px solid #f3f4f6;text-align:center;">${item.quantity}</td>
+        <td style="padding:12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;">₹${(item.price * item.quantity).toFixed(2)}</td>
+      </tr>`)
+        .join('');
+    const addr = order.shippingAddress;
+    const addressBlock = [
+        (0, exports.escapeHtml)(addr.fullName),
+        (0, exports.escapeHtml)(addr.addressLine1),
+        (0, exports.escapeHtml)(addr.addressLine2),
+        `${(0, exports.escapeHtml)(addr.city)}, ${(0, exports.escapeHtml)(addr.state)} - ${(0, exports.escapeHtml)(addr.pincode)}`,
+        `📞 ${(0, exports.escapeHtml)(addr.phone)}`,
+    ]
+        .filter(Boolean)
+        .join('<br>');
+    const html = (0, exports.wrapInTemplate)(`Order Confirmed #${safeOrderNum}`, `<h1 class="h1">Order Confirmed! 🎉</h1>
+     <p class="p">Thank you for your order. We are carefully packing your premium spices and will notify you when it ships.</p>
+     <p class="p">Order Number: <strong style="color:#ff8c00;font-size:17px;">${safeOrderNum}</strong></p>
 
-          <div class="body">
-            <h2 style="color:#333;margin-top:0;">Order Confirmed! 🎉</h2>
-            <p style="color:#555;font-size:14px;">Thank you for your order. We're preparing it with care and will keep you updated.</p>
-            <p style="font-size:14px;color:#555;">Order Number: <strong style="color:#ff8c00;">${order.orderNumber}</strong></p>
+     <h3 style="font-size:16px;color:#111827;margin-top:24px;margin-bottom:12px;">Order Items</h3>
+     <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+       <thead>
+         <tr style="background-color:#fff8f0;color:#ff8c00;border-bottom:2px solid #ff8c00;">
+           <th style="padding:10px 12px;text-align:left;">Item</th>
+           <th style="padding:10px 12px;text-align:center;">Qty</th>
+           <th style="padding:10px 12px;text-align:right;">Amount</th>
+         </tr>
+       </thead>
+       <tbody>
+         ${itemRows}
+         <tr style="font-size:16px;font-weight:800;color:#111827;">
+           <td colspan="2" style="padding:14px 12px;border-top:2px solid #ff8c00;">Total Amount Paid</td>
+           <td style="padding:14px 12px;text-align:right;border-top:2px solid #ff8c00;color:#ff8c00;">₹${order.totalAmount.toFixed(2)}</td>
+         </tr>
+       </tbody>
+     </table>
 
-            <div class="section-title">Order Items</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Qty</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemRows}
-                <tr class="total-row">
-                  <td colspan="2" style="padding:12px;border-top:2px solid #ff8c00;">Total</td>
-                  <td style="padding:12px;text-align:right;border-top:2px solid #ff8c00;">₹${order.totalAmount.toFixed(2)}</td>
-                </tr>
-              </tbody>
-            </table>
+     <h3 style="font-size:16px;color:#111827;margin-top:20px;margin-bottom:8px;">Delivery Address</h3>
+     <div class="card" style="line-height:1.7;">${addressBlock}</div>
 
-            <div class="section-title">Shipping Address</div>
-            <div class="address-box">${addressBlock}</div>
-
-            <div class="section-title">Payment</div>
-            <div class="payment-box">${paymentBadge}</div>
-          </div>
-
-          <div class="footer">
-            <p>© 2026 Matasree. All rights reserved.</p>
-            <p>This is an automated message, please do not reply to this email.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-        const mailOptions = {
-            from: `Matasree <${process.env.EMAIL_USER}>`,
-            to: recipientEmail,
-            subject: `Order Confirmed – #${order.orderNumber} | Matasree`,
-            html,
-        };
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ Order confirmation email sent to ${recipientEmail}: ${info.response}`);
-        return true;
-    }
-    catch (error) {
-        console.error(`❌ Failed to send order confirmation email to ${recipientEmail}:`, error.message);
-        return false;
-    }
+     <h3 style="font-size:16px;color:#111827;margin-top:20px;margin-bottom:8px;">Payment Details</h3>
+     <div style="margin-top:8px;">${paymentBadge}</div>`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Order Confirmed – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
 };
 exports.sendOrderConfirmationEmail = sendOrderConfirmationEmail;
+/**
+ * Payment Success Email
+ */
+const sendPaymentSuccessEmail = async (orderNumber, recipientEmail, amount, paymentId) => {
+    const safeOrderNum = (0, exports.escapeHtml)(orderNumber);
+    const safePayId = (0, exports.escapeHtml)(paymentId || 'N/A');
+    const html = (0, exports.wrapInTemplate)('Payment Receipt', `<h1 class="h1">Payment Received Successfully! 💳</h1>
+     <p class="p">Your payment of <strong>₹${amount.toFixed(2)}</strong> for order <strong>#${safeOrderNum}</strong> was successfully processed.</p>
+     <div class="card">
+       <p style="margin:0 0 6px 0;font-size:14px;"><strong>Order Number:</strong> ${safeOrderNum}</p>
+       <p style="margin:0 0 6px 0;font-size:14px;"><strong>Payment Reference ID:</strong> <code style="font-family:monospace;color:#ff8c00;">${safePayId}</code></p>
+       <p style="margin:0;font-size:14px;"><strong>Amount Paid:</strong> ₹${amount.toFixed(2)}</p>
+     </div>
+     <p class="p">Your order is now being processed for dispatch.</p>`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Payment Successful – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
+};
+exports.sendPaymentSuccessEmail = sendPaymentSuccessEmail;
+/**
+ * Payment Failure Email
+ */
+const sendPaymentFailureEmail = async (orderNumber, recipientEmail, amount, reason) => {
+    const safeOrderNum = (0, exports.escapeHtml)(orderNumber);
+    const safeReason = (0, exports.escapeHtml)(reason || 'Transaction could not be completed by your bank.');
+    const html = (0, exports.wrapInTemplate)('Payment Failed', `<h1 class="h1" style="color:#b91c1c;">Payment Attempt Failed ❌</h1>
+     <p class="p">We were unable to process your payment of <strong>₹${amount.toFixed(2)}</strong> for order <strong>#${safeOrderNum}</strong>.</p>
+     <div class="card" style="background-color:#fef2f2;border-color:#fca5a5;">
+       <p style="margin:0 0 6px 0;color:#991b1b;font-weight:700;">Reason:</p>
+       <p style="margin:0;color:#7f1d1d;font-size:14px;">${safeReason}</p>
+     </div>
+     <p class="p">Don't worry! No funds were deducted from your account. You can retry paying for your order in your account portal.</p>
+     <div style="text-align:center;">
+       <a href="${process.env.FRONTEND_URL || 'http://localhost:8000'}/orders" class="btn">Retry Payment →</a>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Action Required: Payment Failed – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
+};
+exports.sendPaymentFailureEmail = sendPaymentFailureEmail;
+/**
+ * Order Shipped Email
+ */
+const sendShippedEmail = async (orderNumber, recipientEmail, estimatedDelivery, shippingAddress) => {
+    const safeOrderNum = (0, exports.escapeHtml)(orderNumber);
+    const safeEst = (0, exports.escapeHtml)(estimatedDelivery);
+    const addressBlock = shippingAddress
+        ? [
+            (0, exports.escapeHtml)(shippingAddress.name || shippingAddress.fullName),
+            (0, exports.escapeHtml)(shippingAddress.addressLine1),
+            (0, exports.escapeHtml)(shippingAddress.addressLine2),
+            `${(0, exports.escapeHtml)(shippingAddress.city)}, ${(0, exports.escapeHtml)(shippingAddress.state)} - ${(0, exports.escapeHtml)(shippingAddress.pincode)}`,
+            shippingAddress.phone ? `📞 ${(0, exports.escapeHtml)(shippingAddress.phone)}` : '',
+        ]
+            .filter(Boolean)
+            .join('<br>')
+        : '';
+    const html = (0, exports.wrapInTemplate)(`Order Shipped #${safeOrderNum}`, `<h1 class="h1">Your Order has Shipped! 🚚</h1>
+     <p class="p">Great news! Your package is on its way to you.</p>
+     <p class="p">Order Number: <strong style="color:#ff8c00;">${safeOrderNum}</strong></p>
+     
+     <div class="card">
+       <p style="margin:0;font-size:15px;font-weight:700;color:#111827;">📅 Estimated Delivery Date:</p>
+       <p style="margin:6px 0 0 0;font-size:18px;font-weight:800;color:#ff8c00;">${safeEst}</p>
+     </div>
+
+     ${addressBlock ? `<h3 style="font-size:15px;color:#111827;">Shipping Address</h3><div class="card">${addressBlock}</div>` : ''}`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Order Shipped – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
+};
+exports.sendShippedEmail = sendShippedEmail;
+/**
+ * Out For Delivery Email
+ */
+const sendOutForDeliveryEmail = async (orderNumber, recipientEmail, shippingAddress) => {
+    const safeOrderNum = (0, exports.escapeHtml)(orderNumber);
+    const html = (0, exports.wrapInTemplate)(`Out For Delivery #${safeOrderNum}`, `<h1 class="h1">Your Package is Out for Delivery! 📦</h1>
+     <p class="p">Exciting news! Your Matasree Super order <strong>#${safeOrderNum}</strong> is out for delivery with our delivery partner today.</p>
+     <div class="card">
+       <p style="margin:0;font-size:14px;color:#374151;">Please ensure someone is available at your delivery address to receive the package.</p>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Out For Delivery Today – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
+};
+exports.sendOutForDeliveryEmail = sendOutForDeliveryEmail;
+/**
+ * Order Delivered Email
+ */
+const sendDeliveredEmail = async (orderNumber, recipientEmail) => {
+    const safeOrderNum = (0, exports.escapeHtml)(orderNumber);
+    const html = (0, exports.wrapInTemplate)(`Order Delivered #${safeOrderNum}`, `<h1 class="h1">Order Delivered! 🎉</h1>
+     <p class="p">Your order <strong>#${safeOrderNum}</strong> has been successfully delivered.</p>
+     <p class="p">We hope you enjoy your premium spices! If you loved your purchase, please take a moment to leave a review on our website.</p>
+     <div style="text-align:center;">
+       <a href="${process.env.FRONTEND_URL || 'http://localhost:8000'}/products" class="btn">Leave a Product Review →</a>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Order Delivered – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
+};
+exports.sendDeliveredEmail = sendDeliveredEmail;
+/**
+ * Order Cancelled Email
+ */
+const sendCancelledEmail = async (orderNumber, recipientEmail, refundAmount) => {
+    const safeOrderNum = (0, exports.escapeHtml)(orderNumber);
+    const refundInfo = refundAmount && refundAmount > 0
+        ? `<div class="card" style="background-color:#fef2f2;border-color:#fca5a5;">
+           <p style="margin:0;color:#991b1b;font-weight:700;">💰 Refund Information:</p>
+           <p style="margin:4px 0 0 0;color:#7f1d1d;font-size:14px;">A refund of <strong>₹${refundAmount.toFixed(2)}</strong> has been initiated and will reflect in your account within 5-7 business days.</p>
+         </div>`
+        : '';
+    const html = (0, exports.wrapInTemplate)(`Order Cancelled #${safeOrderNum}`, `<h1 class="h1" style="color:#b91c1c;">Order Cancelled 🚫</h1>
+     <p class="p">Your order <strong>#${safeOrderNum}</strong> has been cancelled.</p>
+     ${refundInfo}
+     <p class="p">If you have any questions or feel this was a mistake, please contact our support team at <a href="mailto:admin@matasreesuper.com" style="color:#ff8c00;">admin@matasreesuper.com</a>.</p>`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Order Cancelled – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
+};
+exports.sendCancelledEmail = sendCancelledEmail;
+/**
+ * Refund Initiated Email
+ */
+const sendRefundInitiatedEmail = async (orderNumber, recipientEmail, refundAmount) => {
+    const safeOrderNum = (0, exports.escapeHtml)(orderNumber);
+    const html = (0, exports.wrapInTemplate)('Refund Initiated', `<h1 class="h1">Refund Initiated 💸</h1>
+     <p class="p">A refund of <strong>₹${refundAmount.toFixed(2)}</strong> for order <strong>#${safeOrderNum}</strong> has been successfully initiated.</p>
+     <div class="card">
+       <p style="margin:0;font-size:14px;color:#374151;">The refund amount will be credited back to your original payment method within 5 to 7 business days depending on your bank.</p>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Refund Initiated – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
+};
+exports.sendRefundInitiatedEmail = sendRefundInitiatedEmail;
+/**
+ * Refund Completed Email
+ */
+const sendRefundCompletedEmail = async (orderNumber, recipientEmail, refundAmount, refundId) => {
+    const safeOrderNum = (0, exports.escapeHtml)(orderNumber);
+    const safeRefundId = (0, exports.escapeHtml)(refundId || 'N/A');
+    const html = (0, exports.wrapInTemplate)('Refund Completed', `<h1 class="h1">Refund Processed &amp; Completed ✅</h1>
+     <p class="p">Your refund of <strong>₹${refundAmount.toFixed(2)}</strong> for order <strong>#${safeOrderNum}</strong> has been completed.</p>
+     <div class="card">
+       <p style="margin:0 0 6px 0;font-size:14px;"><strong>Order Number:</strong> ${safeOrderNum}</p>
+       <p style="margin:0 0 6px 0;font-size:14px;"><strong>Refund Reference ID:</strong> <code style="font-family:monospace;color:#ff8c00;">${safeRefundId}</code></p>
+       <p style="margin:0;font-size:14px;"><strong>Refund Amount:</strong> ₹${refundAmount.toFixed(2)}</p>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: recipientEmail,
+        subject: `Refund Completed – #${safeOrderNum} | Matasree Super`,
+        html,
+    });
+};
+exports.sendRefundCompletedEmail = sendRefundCompletedEmail;
+// ============================================================================
+// 3. Contact & Support System Emails
+// ============================================================================
+/**
+ * Contact Form Receipt (Customer Auto-Reply)
+ */
+const sendContactReceiptEmail = async (email, name, subject) => {
+    const safeName = (0, exports.escapeHtml)(name);
+    const safeSub = (0, exports.escapeHtml)(subject);
+    const html = (0, exports.wrapInTemplate)('We Received Your Message', `<h1 class="h1">Thank You for Contacting Us, ${safeName}!</h1>
+     <p class="p">We have received your message regarding <strong>"${safeSub}"</strong>. Our customer care team is reviewing it and will get back to you within 24 hours.</p>
+     <div class="card">
+       <p style="margin:0;font-size:14px;color:#4b5563;">Need urgent assistance? You can reach us directly at <a href="mailto:admin@matasreesuper.com" style="color:#ff8c00;font-weight:700;">admin@matasreesuper.com</a>.</p>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: 'We Received Your Message - Matasree Super Support',
+        html,
+    });
+};
+exports.sendContactReceiptEmail = sendContactReceiptEmail;
+/**
+ * Customer Support Reply (Admin to Customer)
+ */
+const sendCustomerSupportReplyEmail = async (email, name, originalSubject, replyMessage) => {
+    const safeName = (0, exports.escapeHtml)(name);
+    const safeSub = (0, exports.escapeHtml)(originalSubject);
+    const safeReply = (0, exports.escapeHtml)(replyMessage).replace(/\n/g, '<br>');
+    const html = (0, exports.wrapInTemplate)(`Re: ${safeSub}`, `<h1 class="h1">Response from Matasree Super Support</h1>
+     <p class="p">Dear ${safeName},</p>
+     <div class="card" style="background-color:#ffffff;border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+       <p style="margin:0 0 10px 0;font-size:12px;color:#9ca3af;font-weight:700;">OUR RESPONSE:</p>
+       <div style="font-size:15px;color:#1f2937;line-height:1.7;">${safeReply}</div>
+     </div>
+     <p class="p" style="font-size:13px;color:#6b7280;">Regarding your query: <em>"${safeSub}"</em></p>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: `Re: ${safeSub} - Matasree Super Support`,
+        html,
+    });
+};
+exports.sendCustomerSupportReplyEmail = sendCustomerSupportReplyEmail;
+/**
+ * Admin Contact Notification
+ */
+const sendAdminContactAlertEmail = async (contactData) => {
+    const adminEmail = (0, exports.getAdminEmail)();
+    const safeName = (0, exports.escapeHtml)(contactData.name);
+    const safeUserEmail = (0, exports.escapeHtml)(contactData.email);
+    const safeSub = (0, exports.escapeHtml)(contactData.subject);
+    const safePhone = (0, exports.escapeHtml)(contactData.phone || 'Not provided');
+    const safeMsg = (0, exports.escapeHtml)(contactData.message).replace(/\n/g, '<br>');
+    const html = (0, exports.wrapInTemplate)('New Contact Submission', `<h1 class="h1">📩 New Contact Form Submission</h1>
+     <div class="card">
+       <p style="margin:0 0 8px 0;font-size:14px;"><strong>From Name:</strong> ${safeName}</p>
+       <p style="margin:0 0 8px 0;font-size:14px;"><strong>Email:</strong> ${safeUserEmail}</p>
+       <p style="margin:0 0 8px 0;font-size:14px;"><strong>Phone:</strong> ${safePhone}</p>
+       <p style="margin:0 0 8px 0;font-size:14px;"><strong>Subject:</strong> ${safeSub}</p>
+       <hr style="border:0;border-top:1px solid #ffe6cc;margin:12px 0;">
+       <p style="margin:0 0 4px 0;font-size:12px;color:#9ca3af;font-weight:700;">MESSAGE:</p>
+       <div style="font-size:14px;color:#111827;">${safeMsg}</div>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: adminEmail,
+        subject: `[Contact Form] ${safeSub} - From ${safeName}`,
+        html,
+    });
+};
+exports.sendAdminContactAlertEmail = sendAdminContactAlertEmail;
+// ============================================================================
+// 4. Marketing & Newsletter Emails
+// ============================================================================
+/**
+ * Newsletter Welcome + Exclusive Coupon Email
+ */
+const sendNewsletterWelcomeEmail = async (email, name, couponCode, discountValue = 10, maxDiscount = 200, minOrder = 199, expiresAt) => {
+    const safeName = (0, exports.escapeHtml)(name || 'Valued Customer');
+    const safeCode = (0, exports.escapeHtml)(couponCode);
+    const expiryString = expiresAt ? new Date(expiresAt).toLocaleDateString('en-IN') : '30 days';
+    const html = (0, exports.wrapInTemplate)('Welcome to Newsletter', `<h1 class="h1">Welcome to Matasree Super! 🎉</h1>
+     <p class="p">Hello ${safeName}, thank you for subscribing to our newsletter! Here is your exclusive welcome coupon code:</p>
+     <div class="card" style="text-align:center;padding:25px;background:linear-gradient(135deg,#fff8f0 0%,#ffe6cc 100%);">
+       <p style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#6b7280;">EXCLUSIVELY FOR YOU</p>
+       <div style="font-size:32px;font-weight:800;color:#ff8c00;letter-spacing:4px;font-family:monospace;">${safeCode}</div>
+       <p style="margin:10px 0 0 0;font-size:16px;font-weight:700;color:#e65c00;">Get ${discountValue}% OFF Your First Order (Up to ₹${maxDiscount})</p>
+     </div>
+     <div style="font-size:13px;color:#6b7280;margin:15px 0;">
+       <strong>Terms:</strong> Min Order ₹${minOrder} • Valid once per customer • Expires on ${expiryString}
+     </div>
+     <div style="text-align:center;">
+       <a href="${process.env.FRONTEND_URL || 'http://localhost:8000'}/products" class="btn">Shop Now &amp; Use Code →</a>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: '🎉 Welcome to Matasree Super - Your Exclusive 10% Discount Code Inside!',
+        html,
+    });
+};
+exports.sendNewsletterWelcomeEmail = sendNewsletterWelcomeEmail;
+/**
+ * Promotional Broadcast Email
+ */
+const sendPromotionalEmail = async (email, subject, promoTitle, promoBody, ctaUrl, ctaText) => {
+    const safeTitle = (0, exports.escapeHtml)(promoTitle);
+    const safeBody = (0, exports.escapeHtml)(promoBody).replace(/\n/g, '<br>');
+    const safeCtaText = (0, exports.escapeHtml)(ctaText || 'Shop Offer Now →');
+    const html = (0, exports.wrapInTemplate)(safeTitle, `<h1 class="h1">${safeTitle}</h1>
+     <div class="p">${safeBody}</div>
+     ${ctaUrl ? `<div style="text-align:center;"><a href="${(0, exports.escapeHtml)(ctaUrl)}" class="btn">${safeCtaText}</a></div>` : ''}`);
+    return (0, exports.sendEmail)({
+        email,
+        subject: (0, exports.sanitizeHeader)(subject),
+        html,
+    });
+};
+exports.sendPromotionalEmail = sendPromotionalEmail;
+// ============================================================================
+// 5. Admin System Alerts
+// ============================================================================
+/**
+ * Low Stock Admin Alert Email
+ */
+const sendLowStockNotificationEmail = async (adminEmail, items) => {
+    const targetEmail = adminEmail || (0, exports.getAdminEmail)();
+    const rows = items
+        .map((item) => `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #eee;">${(0, exports.escapeHtml)(item.name)}</td>
+        <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">${(0, exports.escapeHtml)(item.sku || 'N/A')}</td>
+        <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;color:#b91c1c;font-weight:700;">${item.stock}</td>
+        <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">${item.threshold}</td>
+      </tr>`)
+        .join('');
+    const html = (0, exports.wrapInTemplate)('Low Stock Alert', `<h1 class="h1" style="color:#b91c1c;">⚠️ Low Stock Inventory Alert</h1>
+     <p class="p">The following inventory items are below their minimum threshold stock level:</p>
+     <table style="width:100%;border-collapse:collapse;font-size:14px;">
+       <thead>
+         <tr style="background:#fef2f2;color:#991b1b;">
+           <th style="padding:10px;text-align:left;">Product</th>
+           <th style="padding:10px;text-align:center;">SKU</th>
+           <th style="padding:10px;text-align:center;">Current Stock</th>
+           <th style="padding:10px;text-align:center;">Threshold</th>
+         </tr>
+       </thead>
+       <tbody>${rows}</tbody>
+     </table>`);
+    return (0, exports.sendEmail)({
+        email: targetEmail,
+        subject: '⚠️ Inventory Alert: Low Stock Detected - Matasree Super',
+        html,
+    });
+};
+exports.sendLowStockNotificationEmail = sendLowStockNotificationEmail;
+/**
+ * New Order Admin Alert Email
+ */
+const sendNewOrderAdminNotificationEmail = async (adminEmail, order) => {
+    const targetEmail = adminEmail || (0, exports.getAdminEmail)();
+    const safeNum = (0, exports.escapeHtml)(order.orderNumber);
+    const safeName = (0, exports.escapeHtml)(order.customerName || 'Customer');
+    const html = (0, exports.wrapInTemplate)('New Order Received', `<h1 class="h1">🛍️ New Order Received!</h1>
+     <div class="card">
+       <p style="margin:0 0 6px 0;font-size:14px;"><strong>Order Number:</strong> #${safeNum}</p>
+       <p style="margin:0 0 6px 0;font-size:14px;"><strong>Customer:</strong> ${safeName} (${(0, exports.escapeHtml)(order.customerEmail)})</p>
+       <p style="margin:0;font-size:16px;font-weight:800;color:#ff8c00;"><strong>Total Value:</strong> ₹${order.totalAmount.toFixed(2)}</p>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: targetEmail,
+        subject: `🛍️ New Order Alert: #${safeNum} (₹${order.totalAmount.toFixed(2)})`,
+        html,
+    });
+};
+exports.sendNewOrderAdminNotificationEmail = sendNewOrderAdminNotificationEmail;
+/**
+ * Failed Payment Admin Alert Email
+ */
+const sendFailedPaymentAdminAlert = async (adminEmail, orderNumber, amount, reason) => {
+    const targetEmail = adminEmail || (0, exports.getAdminEmail)();
+    const safeNum = (0, exports.escapeHtml)(orderNumber);
+    const safeReason = (0, exports.escapeHtml)(reason || 'Gateway error');
+    const html = (0, exports.wrapInTemplate)('Failed Payment Alert', `<h1 class="h1" style="color:#b91c1c;">🚨 Payment Failure Alert</h1>
+     <div class="card" style="background:#fef2f2;border-color:#fca5a5;">
+       <p style="margin:0 0 6px 0;font-size:14px;"><strong>Order Number:</strong> #${safeNum}</p>
+       <p style="margin:0 0 6px 0;font-size:14px;"><strong>Attempted Amount:</strong> ₹${amount.toFixed(2)}</p>
+       <p style="margin:0;font-size:14px;"><strong>Failure Reason:</strong> ${safeReason}</p>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: targetEmail,
+        subject: `🚨 Payment Failure Alert: Order #${safeNum}`,
+        html,
+    });
+};
+exports.sendFailedPaymentAdminAlert = sendFailedPaymentAdminAlert;
+/**
+ * System Health Alert Email
+ */
+const sendSystemAlertEmail = async (adminEmail, subject, alertDetails) => {
+    const targetEmail = adminEmail || (0, exports.getAdminEmail)();
+    const safeSub = (0, exports.escapeHtml)(subject);
+    const safeDetails = (0, exports.escapeHtml)(alertDetails).replace(/\n/g, '<br>');
+    const html = (0, exports.wrapInTemplate)('System Alert', `<h1 class="h1" style="color:#b91c1c;">🔔 System Notification</h1>
+     <div class="card">
+       <div style="font-family:monospace;font-size:13px;color:#111827;">${safeDetails}</div>
+     </div>`);
+    return (0, exports.sendEmail)({
+        email: targetEmail,
+        subject: `[SYSTEM ALERT] ${safeSub}`,
+        html,
+    });
+};
+exports.sendSystemAlertEmail = sendSystemAlertEmail;
 //# sourceMappingURL=email.js.map

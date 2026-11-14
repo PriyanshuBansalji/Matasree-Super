@@ -57,7 +57,7 @@ const AdminCategories = () => {
     });
 
     useEffect(() => {
-        if (!user?.isAdmin && user?.role !== 'admin') {
+        if (user?.role !== 'admin') {
             navigate('/');
             return;
         }

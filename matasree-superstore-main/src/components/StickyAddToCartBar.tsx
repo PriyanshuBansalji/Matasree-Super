@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 
 interface StickyAddToCartBarProps {
   productName: string;          // shown truncated to 30 chars with ellipsis
-  price: number;                // current price, kept in sync
+  price: number;                // current price (variant-aware), kept in sync
+  originalPrice?: number;       // if set, shown with strikethrough
+  selectedWeight?: string;      // variant weight label to show alongside name
   stock: number;                // disables button when <= 0
   onAddToCart: () => void;      // same action as the primary button
   isLoading?: boolean;          // shows spinner when true
@@ -19,6 +21,8 @@ interface StickyAddToCartBarProps {
 const StickyAddToCartBar = ({
   productName,
   price,
+  originalPrice,
+  selectedWeight,
   stock,
   onAddToCart,
   isLoading = false,
@@ -26,10 +30,9 @@ const StickyAddToCartBar = ({
 }: StickyAddToCartBarProps) => {
   const [visible, setVisible] = useState(false);
 
-  // Truncate product name to 30 chars with ellipsis
-  const truncatedName =
-    productName.length > 30 ? productName.slice(0, 30) + '…' : productName;
-
+  const truncatedName = productName.length > 28 ? productName.slice(0, 28) + '…' : productName;
+  const discount = originalPrice && originalPrice > price
+    ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
   const isDisabled = stock <= 0 || isLoading;
 
   // ── IntersectionObserver — show bar when primary button leaves viewport ─────
@@ -65,18 +68,27 @@ const StickyAddToCartBar = ({
           aria-label="Sticky Add to Cart bar"
         >
           <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-            {/* Product name */}
-            <p
-              className="font-serif font-semibold text-foreground flex-1 truncate"
-              title={productName}
-            >
-              {truncatedName}
-            </p>
+            {/* Product name + weight */}
+            <div className="flex-1 min-w-0">
+              <p className="font-serif font-semibold text-foreground truncate" title={productName}>
+                {truncatedName}
+              </p>
+              {selectedWeight && (
+                <p className="text-xs text-muted-foreground">{selectedWeight}</p>
+              )}
+            </div>
 
-            {/* Price */}
-            <span className="font-serif font-bold text-xl text-foreground whitespace-nowrap">
-              ₹{price.toFixed(0)}
-            </span>
+            {/* Price with strikethrough */}
+            <div className="flex flex-col items-end shrink-0">
+              <span className="font-serif font-bold text-xl text-foreground whitespace-nowrap">
+                ₹{price.toFixed(0)}
+              </span>
+              {originalPrice && originalPrice > price && (
+                <span className="text-xs text-muted-foreground line-through whitespace-nowrap">
+                  ₹{originalPrice.toFixed(0)} {discount > 0 && <span className="text-green-600 no-underline">({discount}% off)</span>}
+                </span>
+              )}
+            </div>
 
             {/* Add to Cart button */}
             <Button

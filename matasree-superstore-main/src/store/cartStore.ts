@@ -24,42 +24,57 @@ export const useCartStore = create<CartState>()(
       
       addItem: (product: Product) => {
         set((state) => {
-          const existingItem = state.items.find((item) => item.id === product.id);
+          const productId = product.id ?? product._id;
+          // Use actual weight (empty string if none) — never use "default" as a placeholder
+          const weight = product.weight ?? '';
+          const compoundId = `${productId}-${weight}`;
+          const existingItem = state.items.find((item) => item.id === compoundId);
+          const qty = (product as any).quantity ?? 1;
           if (existingItem) {
             return {
               items: state.items.map((item) =>
-                item.id === product.id
-                  ? { ...item, quantity: item.quantity + 1 }
+                item.id === compoundId
+                  ? { ...item, quantity: item.quantity + qty }
                   : item
               ),
             };
           }
-          return { items: [...state.items, { ...product, quantity: 1 }] };
+          const newItem: CartItem = {
+            id: compoundId,
+            productId: productId,
+            name: product.name,
+            price: product.price,
+            quantity: qty,
+            image: product.image,
+            weight: product.weight,
+            description: product.description,
+          };
+          return { items: [...state.items, newItem] };
         });
       },
       
-      removeItem: (productId: string) => {
+      removeItem: (id: string) => {
         set((state) => ({
-          items: state.items.filter((item) => item.id !== productId),
+          items: state.items.filter((item) => item.id !== id),
         }));
       },
       
-      updateQuantity: (productId: string, quantity: number) => {
+      updateQuantity: (id: string, quantity: number) => {
         if (quantity < 1) {
-          get().removeItem(productId);
+          get().removeItem(id);
           return;
         }
         set((state) => ({
           items: state.items.map((item) =>
-            item.id === productId ? { ...item, quantity } : item
+            item.id === id ? { ...item, quantity } : item
           ),
         }));
       },
 
-      updateItemPrice: (productId: string, newPrice: number) => {
+      updateItemPrice: (id: string, newPrice: number) => {
         set((state) => ({
           items: state.items.map((item) =>
-            item.id === productId ? { ...item, price: newPrice } : item
+            item.id === id ? { ...item, price: newPrice } : item
           ),
         }));
       },
@@ -77,6 +92,21 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: 'matasree-cart',
+      // Migrate stale items that used "-default" as weight placeholder
+      migrate: (persistedState: any) => {
+        if (persistedState?.items) {
+          persistedState.items = persistedState.items.map((item: any) => {
+            if (item.id?.endsWith('-default')) {
+              // Strip the "-default" suffix and clear the weight
+              const productId = item.id.replace(/-default$/, '');
+              return { ...item, id: `${productId}-`, weight: undefined };
+            }
+            return item;
+          });
+        }
+        return persistedState;
+      },
+      version: 2,
     }
   )
 );

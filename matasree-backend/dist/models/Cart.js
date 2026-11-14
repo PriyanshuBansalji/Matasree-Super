@@ -57,6 +57,11 @@ const cartSchema = new mongoose_1.Schema({
                 type: Number,
                 required: true,
             },
+            weight: {
+                type: String,
+                required: true,
+                trim: true,
+            },
             addedAt: {
                 type: Date,
                 default: Date.now,

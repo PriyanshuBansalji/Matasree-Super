@@ -15,17 +15,15 @@ const RegisterPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { register, isLoading } = useAuthStore();
-  const [step, setStep] = useState<'details' | 'email-otp' | 'mobile-otp' | 'confirmation'>('details');
+  const [step, setStep] = useState<'details' | 'email-otp' | 'confirmation'>('details');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string; mobile?: string; emailOtp?: string; mobileOtp?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string; mobile?: string; emailOtp?: string }>({});
   const [touched, setTouched] = useState<{ name?: boolean; email?: boolean; password?: boolean; confirmPassword?: boolean; mobile?: boolean }>({});
   const [emailOtpTimer, setEmailOtpTimer] = useState(0);
-  const [mobileOtpTimer, setMobileOtpTimer] = useState(0);
   const [otpLoading, setOtpLoading] = useState(false);
   const emailOtpRef = useRef<HTMLInputElement>(null);
-  const mobileOtpRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -37,7 +35,6 @@ const RegisterPage = () => {
 
   const [otpData, setOtpData] = useState({
     emailOtp: '',
-    mobileOtp: '',
   });
 
   // Email OTP Timer
@@ -50,17 +47,6 @@ const RegisterPage = () => {
     }
     return () => clearInterval(interval);
   }, [emailOtpTimer]);
-
-  // Mobile OTP Timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (mobileOtpTimer > 0) {
-      interval = setInterval(() => {
-        setMobileOtpTimer((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [mobileOtpTimer]);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -295,13 +281,6 @@ const RegisterPage = () => {
         description: 'Your email has been verified successfully',
       });
 
-      // BYPASS: Skip mobile OTP verification (Twilio not configured)
-      // Go directly to confirmation step
-      toast({
-        title: 'Mobile Verification Skipped',
-        description: 'Mobile verification bypassed for development',
-      });
-
       setStep('confirmation');
     } catch (error: any) {
       setErrors((prev) => ({ ...prev, emailOtp: 'Invalid OTP. Please try again.' }));
@@ -315,61 +294,10 @@ const RegisterPage = () => {
     }
   };
 
-  const handleResendMobileOtp = async () => {
-    try {
-      setOtpLoading(true);
-      await apiClient.resendMobileOtp(formData.mobile);
-
-      toast({
-        title: 'Mobile OTP Resent',
-        description: `Verification code resent to ${formData.mobile}`,
-      });
-      setMobileOtpTimer(300);
-      setOtpData((prev) => ({ ...prev, mobileOtp: '' }));
-      mobileOtpRef.current?.focus();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to resend mobile OTP',
-        variant: 'destructive',
-      });
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
-  const handleVerifyMobileOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!otpData.mobileOtp || otpData.mobileOtp.length !== 6) {
-      setErrors((prev) => ({ ...prev, mobileOtp: 'Please enter a valid 6-digit OTP' }));
-      return;
-    }
-
-    try {
-      setOtpLoading(true);
-      await apiClient.verifyMobileOtp(formData.mobile, otpData.mobileOtp);
-
-      toast({
-        title: 'Mobile Verified',
-        description: 'Your mobile number has been verified successfully',
-      });
-      setStep('confirmation');
-    } catch (error: any) {
-      setErrors((prev) => ({ ...prev, mobileOtp: 'Invalid OTP. Please try again.' }));
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Invalid mobile OTP',
-        variant: 'destructive',
-      });
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
   const handleCompleteRegistration = async () => {
     try {
       await register(formData.name, formData.email, formData.password);
+
       toast({
         title: 'Success',
         description: 'Account created successfully! Redirecting to home...',
@@ -408,29 +336,22 @@ const RegisterPage = () => {
         {/* Step Indicator */}
         <div className="flex justify-center gap-2 sm:gap-4 px-4 mb-10 flex-wrap w-full">
           <div className={`flex items-center gap-1 sm:gap-2 ${step === 'details' ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'details' ? 'bg-amber-100 border-2 border-amber-600' : (step === 'email-otp' || step === 'mobile-otp' || step === 'confirmation') ? 'bg-green-100 border-2 border-green-600' : 'bg-gray-100'}`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'details' ? 'bg-amber-100 border-2 border-amber-600' : 'bg-green-100 border-2 border-green-600'}`}>
               {step !== 'details' ? <Check className="w-4 h-4 text-green-600" /> : '1'}
             </div>
             <span className="hidden sm:inline text-sm">Details</span>
           </div>
 
           <div className={`flex items-center gap-1 sm:gap-2 ${step === 'email-otp' ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'email-otp' ? 'bg-amber-100 border-2 border-amber-600' : (step === 'mobile-otp' || step === 'confirmation') ? 'bg-green-100 border-2 border-green-600' : 'bg-gray-100'}`}>
-              {(step === 'mobile-otp' || step === 'confirmation') ? <Check className="w-4 h-4 text-green-600" /> : '2'}
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'email-otp' ? 'bg-amber-100 border-2 border-amber-600' : step === 'confirmation' ? 'bg-green-100 border-2 border-green-600' : 'bg-gray-100'}`}>
+              {step === 'confirmation' ? <Check className="w-4 h-4 text-green-600" /> : '2'}
             </div>
-            <span className="hidden sm:inline text-sm">Email</span>
-          </div>
-
-          <div className={`flex items-center gap-1 sm:gap-2 ${step === 'mobile-otp' ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'mobile-otp' ? 'bg-amber-100 border-2 border-amber-600' : step === 'confirmation' ? 'bg-green-100 border-2 border-green-600' : 'bg-gray-100'}`}>
-              {step === 'confirmation' ? <Check className="w-4 h-4 text-green-600" /> : '3'}
-            </div>
-            <span className="hidden sm:inline text-sm">Mobile</span>
+            <span className="hidden sm:inline text-sm">Verify Email</span>
           </div>
 
           <div className={`flex items-center gap-1 sm:gap-2 ${step === 'confirmation' ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step === 'confirmation' ? 'bg-amber-100 border-2 border-amber-600' : 'bg-gray-100'}`}>
-              4
+              3
             </div>
             <span className="hidden sm:inline text-sm">Confirm</span>
           </div>
@@ -871,126 +792,7 @@ const RegisterPage = () => {
             </>
           )}
 
-          {/* Step 3: Mobile OTP Verification */}
-          {step === 'mobile-otp' && (
-            <>
-              <CardHeader className="space-y-2 bg-gradient-to-br from-purple-50 to-pink-50">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
-                    <Phone className="w-6 h-6 text-white" />
-                  </div>
-                </div>
-                <CardTitle className="text-3xl font-serif">Verify Mobile</CardTitle>
-                <CardDescription className="text-base">
-                  Step 3: Enter OTP sent to {formData.mobile}
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent className="pt-8">
-                <form onSubmit={handleVerifyMobileOtp} className="space-y-6">
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <p className="text-sm text-purple-800">
-                      We've sent a 6-digit code to your mobile number. Please enter it below.
-                    </p>
-                  </div>
-
-                  {/* Mobile OTP Field */}
-                  <div className="space-y-2">
-                    <label htmlFor="mobileOtp" className="text-sm font-semibold text-gray-700">
-                      Enter OTP
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-purple-600" />
-                      <Input
-                        ref={mobileOtpRef}
-                        id="mobileOtp"
-                        type="text"
-                        placeholder="000000"
-                        value={otpData.mobileOtp}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                          setOtpData((prev) => ({ ...prev, mobileOtp: value }));
-                          setErrors((prev) => ({ ...prev, mobileOtp: '' }));
-                        }}
-                        maxLength={6}
-                        className="pl-12 py-6 border-2 border-purple-300 hover:border-purple-400 text-center text-2xl tracking-widest font-bold"
-                        disabled={otpLoading}
-                        aria-describedby={errors.mobileOtp ? 'register-mobile-otp-error' : undefined}
-                        aria-invalid={!!errors.mobileOtp}
-                      />
-                    </div>
-                    {errors.mobileOtp && (
-                      <div id="register-mobile-otp-error" className="flex items-center gap-2 text-red-600 text-sm" role="alert">
-                        <AlertCircle className="w-4 h-4" aria-hidden="true" />
-                        {errors.mobileOtp}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Timer */}
-                  <div className="text-center">
-                    {mobileOtpTimer > 0 ? (
-                      <p className="text-sm text-gray-600">
-                        OTP expires in{' '}
-                        <span className="font-semibold text-purple-600">
-                          {Math.floor(mobileOtpTimer / 60)}:{mobileOtpTimer % 60 < 10 ? '0' : ''}{mobileOtpTimer % 60}
-                        </span>
-                      </p>
-                    ) : (
-                      <p className="text-sm text-red-600">OTP Expired</p>
-                    )}
-                  </div>
-
-                  {/* Resend Button */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full py-6"
-                    onClick={handleResendMobileOtp}
-                    disabled={otpLoading || mobileOtpTimer > 0}
-                  >
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Resend OTP {mobileOtpTimer > 0 && `(${mobileOtpTimer}s)`}
-                  </Button>
-
-                  {/* Verify Button */}
-                  <Button
-                    type="submit"
-                    className="w-full py-6 text-base font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg transition-all hover:shadow-lg disabled:opacity-70"
-                    disabled={otpLoading || otpData.mobileOtp.length !== 6}
-                  >
-                    {otpLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Verifying...
-                      </>
-                    ) : (
-                      <>
-                        Verify Mobile
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
-                    )}
-                  </Button>
-
-                  {/* Back Button */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      setStep('email-otp');
-                      setOtpData((prev) => ({ ...prev, mobileOtp: '' }));
-                      setErrors((prev) => ({ ...prev, mobileOtp: '' }));
-                    }}
-                  >
-                    Back
-                  </Button>
-                </form>
-              </CardContent>
-            </>
-          )}
-
-          {/* Step 4: Confirmation */}
+          {/* Step 3: Confirmation */}
           {step === 'confirmation' && (
             <>
               <CardHeader className="space-y-2 bg-gradient-to-br from-green-50 to-emerald-50">
@@ -1001,7 +803,7 @@ const RegisterPage = () => {
                 </div>
                 <CardTitle className="text-3xl font-serif">Almost Done!</CardTitle>
                 <CardDescription className="text-base">
-                  Step 4: Create your account
+                  Step 3: Create your account
                 </CardDescription>
               </CardHeader>
 
@@ -1014,14 +816,6 @@ const RegisterPage = () => {
                       <div>
                         <p className="text-sm font-semibold text-green-900">Email Verified</p>
                         <p className="text-xs text-green-700">{formData.email}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <Check className="w-5 h-5 text-green-600 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-green-900">Mobile Verified</p>
-                        <p className="text-xs text-green-700">{formData.mobile}</p>
                       </div>
                     </div>
                   </div>
@@ -1063,9 +857,7 @@ const RegisterPage = () => {
                     type="button"
                     variant="outline"
                     className="w-full"
-                    onClick={() => {
-                      setStep('mobile-otp');
-                    }}
+                    onClick={() => setStep('email-otp')}
                   >
                     Back
                   </Button>

@@ -8,9 +8,9 @@ export default function AdminRoute({ children }: { children: JSX.Element }) {
     return <Navigate to="/login" replace />;
   }
 
-  // Double check both role and isAdmin flag for better security
-  if (user?.role !== 'admin' && !user?.isAdmin) {
-    // If authenticated but not admin, send to regular dashboard/profile
+  // Check admin role — `isAdmin` is deprecated, use `role` exclusively
+  if (user?.role !== 'admin') {
+    // If authenticated but not admin, send to regular profile
     return <Navigate to="/profile" replace />;
   }
 

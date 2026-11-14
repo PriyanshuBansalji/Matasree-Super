@@ -1,10 +1,18 @@
 import { Response } from 'express';
 import User from '../models/User';
+import Product from '../models/Product';
+import Cart from '../models/Cart';
+import Wishlist from '../models/Wishlist';
+import Address from '../models/Address';
+import LoyaltyAccount from '../models/LoyaltyAccount';
+import LoyaltyTransaction from '../models/LoyaltyTransaction';
+import RefreshToken from '../models/RefreshToken';
 import Order from '../models/Order';
 import Payment from '../models/Payment';
 import AdminConfig from '../models/AdminConfig';
 import Recipe from '../models/Recipe';
 import SeasonalBanner from '../models/SeasonalBanner';
+import Coupon from '../models/Coupon';
 import { ApiResponse } from '../utils/response';
 import { AuthenticatedRequest } from '../middleware/auth';
 import Joi from 'joi';
@@ -30,6 +38,7 @@ export const getDashboardStats = async (req: any, res: Response) => {
     const totalUsers = await User.countDocuments({ role: 'customer' });
     const totalOrders = await Order.countDocuments();
     const totalRevenue = await Order.aggregate([
+      { $match: { orderstatus: { $ne: 'cancelled' } } },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } },
     ]);
 
@@ -92,7 +101,36 @@ export const getAllUsers = async (req: any, res: Response) => {
  */
 export const getRevenueAnalytics = async (req: any, res: Response) => {
   try {
+    const { startDate, endDate } = req.query;
+    let matchFilter: any = { orderstatus: { $ne: 'cancelled' } };
+
+    if (startDate || endDate) {
+      if (startDate && endDate && startDate > endDate) {
+        return res.status(400).json(new ApiResponse(false, 'startDate cannot be after endDate', null, 400));
+      }
+
+      const dateFilter: any = {};
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setUTCHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setUTCHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+      matchFilter.createdAt = dateFilter;
+    } else {
+      // Fallback to last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      thirtyDaysAgo.setUTCHours(0, 0, 0, 0);
+      matchFilter.createdAt = { $gte: thirtyDaysAgo };
+    }
+
     const dailyRevenue = await Order.aggregate([
+      { $match: matchFilter },
       {
         $group: {
           _id: {
@@ -103,12 +141,11 @@ export const getRevenueAnalytics = async (req: any, res: Response) => {
         },
       },
       { $sort: { _id: 1 } },
-      { $limit: 30 }, // Last 30 days
     ]);
 
-    res.status(200).json(new ApiResponse(true, 'Revenue analytics fetched', dailyRevenue));
+    return res.status(200).json(new ApiResponse(true, 'Revenue analytics fetched', dailyRevenue));
   } catch (error: any) {
-    res.status(500).json(new ApiResponse(false, error.message || 'Failed to fetch analytics', null, 500));
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to fetch analytics', null, 500));
   }
 };
 
@@ -129,12 +166,12 @@ export const getPaymentSummary = async (req: any, res: Response) => {
 
     // Transform raw aggregate array into structured shape
     const totalPayments = paymentSummary.reduce((sum: number, item: any) => sum + item.count, 0);
-    const razorpayEntry = paymentSummary.find((item: any) => item._id === 'razorpay');
+    const cashfreeEntry = paymentSummary.find((item: any) => item._id === 'cashfree' || item._id === 'razorpay');
     const codEntry = paymentSummary.find((item: any) => item._id === 'cod');
 
     const structured = {
       totalPayments,
-      razorpayPayments: razorpayEntry?.count || 0,
+      cashfreePayments: cashfreeEntry?.count || 0,
       codPayments: codEntry?.count || 0,
       paymentMethods: paymentSummary,
     };
@@ -178,15 +215,33 @@ export const updateUserRole = async (req: any, res: Response) => {
  */
 export const deleteUser = async (req: any, res: Response) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    const userId = req.params.id;
+    const user = await User.findByIdAndDelete(userId);
 
     if (!user) {
       return res.status(404).json(new ApiResponse(false, 'User not found', null, 404));
     }
 
-    res.status(200).json(new ApiResponse(true, 'User deleted successfully'));
+    // Cascade delete associated user data (Phase 2, Req 9.1, 9.2, 9.3)
+    const settlements = await Promise.allSettled([
+      Cart.deleteOne({ userId }),
+      Wishlist.deleteOne({ userId }),
+      Address.deleteMany({ userId }),
+      LoyaltyAccount.deleteOne({ userId }),
+      LoyaltyTransaction.deleteMany({ userId }),
+      RefreshToken.deleteMany({ userId }),
+    ]);
+
+    // Log any rejected settlements
+    settlements.forEach((result, idx) => {
+      if (result.status === 'rejected') {
+        console.error(`[deleteUser cascade] Task ${idx} failed:`, result.reason);
+      }
+    });
+
+    return res.status(200).json(new ApiResponse(true, 'User deleted successfully'));
   } catch (error: any) {
-    res.status(500).json(new ApiResponse(false, error.message || 'Failed to delete user', null, 500));
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to delete user', null, 500));
   }
 };
 
@@ -286,8 +341,8 @@ const recipeSchema = Joi.object({
  */
 export const getRecipes = async (req: any, res: Response) => {
   try {
-    const { tag, region, page = 1 } = req.query;
-    const limit = 10;
+    const { tag, region, page = 1, limit: limitQuery } = req.query;
+    const limit = limitQuery ? parseInt(limitQuery as string, 10) : 500;
     const skip = (parseInt(page as string, 10) - 1) * limit;
 
     const filter: Record<string, any> = {};
@@ -295,7 +350,7 @@ export const getRecipes = async (req: any, res: Response) => {
     if (region) filter.region = region as string;
 
     const [recipes, total] = await Promise.all([
-      Recipe.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      Recipe.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
       Recipe.countDocuments(filter),
     ]);
 
@@ -403,9 +458,18 @@ const bannerSchema = Joi.object({
  * GET /api/admin/banners (public)
  * Returns all seasonal banners; client filters by activeFrom/activeTo.
  */
-export const getSeasonalBanners = async (_req: any, res: Response) => {
+export const getSeasonalBanners = async (req: any, res: Response) => {
   try {
-    const banners = await SeasonalBanner.find().sort({ activeFrom: 1 });
+    const activeOnly = req.query.activeOnly === 'true';
+    let filter: any = {};
+    if (activeOnly) {
+      const now = new Date();
+      filter = {
+        activeFrom: { $lte: now },
+        activeTo: { $gte: now },
+      };
+    }
+    const banners = await SeasonalBanner.find(filter).sort({ activeFrom: 1 }).lean();
     return res.status(200).json(new ApiResponse(true, 'Banners fetched', banners));
   } catch (error: any) {
     return res
@@ -479,5 +543,76 @@ export const deleteBanner = async (req: any, res: Response) => {
     return res
       .status(500)
       .json(new ApiResponse(false, error.message || 'Failed to delete banner', null, 500));
+  }
+};
+
+/**
+ * GET /api/admin/products/low-stock (Admin)
+ * Phase 3, Req 11.3
+ */
+export const getLowStockProducts = async (req: any, res: Response) => {
+  try {
+    const threshold = parseInt(req.query.threshold as string) || 10;
+    const products = await Product.find({ stock: { $lt: threshold } })
+      .select('name stock price image')
+      .sort({ stock: 1 })
+      .lean();
+
+    return res.status(200).json(new ApiResponse(true, 'Low stock products fetched', products));
+  } catch (error: any) {
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to fetch low stock products', null, 500));
+  }
+};
+
+/**
+ * GET /api/admin/coupons/analytics (Admin)
+ * Phase 3, Req 12.2
+ */
+export const getCouponAnalytics = async (req: any, res: Response) => {
+  try {
+    const coupons = await Coupon.find().lean();
+    const orderSums = await Order.aggregate([
+      { $match: { couponCode: { $ne: null } } },
+      {
+        $group: {
+          _id: '$couponCode',
+          totalRevenueSaved: { $sum: '$discountAmount' },
+        },
+      },
+    ]);
+
+    const revenueMap = new Map(orderSums.map((item) => [item._id.toUpperCase(), item.totalRevenueSaved]));
+
+    const analytics = coupons.map((c) => ({
+      code: c.code,
+      discountType: c.discountType,
+      discountValue: c.discountValue,
+      usageCount: c.usageCount || 0,
+      maxUses: c.maxUses || 0,
+      totalRevenueSaved: revenueMap.get(c.code.toUpperCase()) || 0,
+    }));
+
+    return res.status(200).json(new ApiResponse(true, 'Coupon analytics fetched', analytics));
+  } catch (error: any) {
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to fetch coupon analytics', null, 500));
+  }
+};
+
+/**
+ * GET /api/admin/products/top-selling (Admin)
+ * Phase 3, Req 14.3
+ */
+export const getTopSellingProducts = async (req: any, res: Response) => {
+  try {
+    const limit = Math.min(20, parseInt(req.query.limit as string) || 5);
+    const products = await Product.find({ sold: { $gt: 0 } })
+      .select('name sold price image')
+      .sort({ sold: -1 })
+      .limit(limit)
+      .lean();
+
+    return res.status(200).json(new ApiResponse(true, 'Top selling products fetched', products));
+  } catch (error: any) {
+    return res.status(500).json(new ApiResponse(false, error.message || 'Failed to fetch top selling products', null, 500));
   }
 };

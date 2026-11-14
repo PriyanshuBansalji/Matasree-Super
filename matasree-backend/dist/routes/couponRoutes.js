@@ -11,7 +11,44 @@ const response_1 = require("../utils/response");
 const auth_1 = require("../middleware/auth");
 // Removed redundant import
 const crypto_1 = __importDefault(require("crypto"));
+const joi_1 = __importDefault(require("joi"));
 const router = (0, express_1.Router)();
+// ============================================================
+// JOI SCHEMAS
+// ============================================================
+const validateCouponSchema = joi_1.default.object({
+    code: joi_1.default.string().required().trim(),
+    orderAmount: joi_1.default.number().required().min(0),
+    cartItems: joi_1.default.array().items(joi_1.default.object({
+        productId: joi_1.default.string().required(),
+        categoryId: joi_1.default.string().optional(),
+        price: joi_1.default.number().required().min(0),
+        qty: joi_1.default.number().required().min(1),
+    })).optional().default([]),
+});
+const applyCouponSchema = joi_1.default.object({
+    code: joi_1.default.string().required().trim(),
+    orderId: joi_1.default.string().optional(),
+    orderAmount: joi_1.default.number().optional().min(0).default(0),
+    cartItems: joi_1.default.array().items(joi_1.default.object({
+        productId: joi_1.default.string().required(),
+        categoryId: joi_1.default.string().optional(),
+        price: joi_1.default.number().required().min(0),
+        qty: joi_1.default.number().required().min(1),
+    })).optional().default([]),
+});
+const adminCreateCouponSchema = joi_1.default.object({
+    code: joi_1.default.string().trim().uppercase().min(3).max(20).optional(),
+    email: joi_1.default.string().email().optional(),
+    discountType: joi_1.default.string().valid('percentage', 'fixed').optional(),
+    discountValue: joi_1.default.number().min(0).optional(),
+    minOrderAmount: joi_1.default.number().min(0).optional(),
+    maxDiscount: joi_1.default.number().min(0).optional(),
+    expiresInDays: joi_1.default.number().integer().min(1).optional(),
+    source: joi_1.default.string().optional(),
+    maxUses: joi_1.default.number().integer().min(0).optional(),
+    categoryRestrictions: joi_1.default.array().items(joi_1.default.string()).optional(),
+});
 /**
  * Generate a unique, unambiguous coupon code
  * Removes confusing characters: 0/O, 1/I/L, 5/S, 2/Z
@@ -94,11 +131,11 @@ function computeCouponDiscount(coupon, orderAmount, cartItems) {
 router.post('/validate', auth_1.verifyToken, async (req, res) => {
     try {
         const authReq = req;
-        const { code, orderAmount, cartItems = [] } = req.body;
-        if (!code || typeof code !== 'string') {
-            return res.status(400).json(new response_1.ApiResponse(false, 'Coupon code is required', null, 400));
+        const { error, value } = validateCouponSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+        if (error) {
+            return res.status(400).json({ success: false, message: error.details[0].message });
         }
-        const parsedOrderAmount = parseFloat(orderAmount) || 0;
+        const { code, orderAmount: parsedOrderAmount, cartItems } = value;
         // Req 12.1 — existence check
         const coupon = await Coupon_1.default.findOne({ code: code.toUpperCase().trim() });
         if (!coupon) {
@@ -106,7 +143,7 @@ router.post('/validate', auth_1.verifyToken, async (req, res) => {
         }
         // Newsletter coupon ownership check (pre-existing business rule)
         if (coupon.source === 'newsletter') {
-            if (authReq.user && coupon.email.toLowerCase() !== authReq.user.email.toLowerCase()) {
+            if (authReq.user && coupon.email?.toLowerCase() !== authReq.user.email.toLowerCase()) {
                 return res.status(400).json(new response_1.ApiResponse(false, 'This coupon code belongs to another account', null, 400));
             }
             if (authReq.user) {
@@ -140,41 +177,55 @@ router.post('/validate', auth_1.verifyToken, async (req, res) => {
     }
 });
 /**
- * Apply coupon (mark as used) — called during order placement
+ * Apply coupon (run full validation, mark as used, and increment usageCount) — called during order placement
  * POST /api/coupons/apply
+ *
+ * Body:
+ *   code        {string}     — coupon code to apply
+ *   orderId     {string}     — optional order ID being created
+ *   orderAmount {number}     — total cart value before discount
+ *   cartItems   {CartItem[]} — optional; required for category-restricted coupons
+ *
+ * Runs the full validation algorithm (Req 12.1–12.6) and increments usageCount (Req 12.2).
  */
 router.post('/apply', auth_1.verifyToken, async (req, res) => {
     try {
         const authReq = req;
-        const { code, orderId } = req.body;
+        const { error: bodyError, value } = applyCouponSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+        if (bodyError) {
+            return res.status(400).json({ success: false, message: bodyError.details[0].message });
+        }
+        const { code, orderId, orderAmount, cartItems } = value;
+        // Req 12.1 — existence check
         const coupon = await Coupon_1.default.findOne({ code: code.toUpperCase().trim() });
         if (!coupon) {
-            return res.status(404).json(new response_1.ApiResponse(false, 'Invalid coupon code', null, 404));
+            return res.status(400).json(new response_1.ApiResponse(false, 'Invalid coupon code', null, 400));
         }
-        if (coupon.isUsed) {
-            return res.status(400).json(new response_1.ApiResponse(false, 'Coupon already used', null, 400));
-        }
-        // Newsletter coupon lifetime limits
+        // Newsletter coupon ownership check (pre-existing business rule)
         if (coupon.source === 'newsletter') {
-            if (authReq.user && coupon.email.toLowerCase() !== authReq.user.email.toLowerCase()) {
+            if (authReq.user && coupon.email?.toLowerCase() !== authReq.user.email.toLowerCase()) {
                 return res.status(400).json(new response_1.ApiResponse(false, 'This 10% off code belongs to another account', null, 400));
             }
             if (authReq.user) {
                 const usedNewsletterCoupon = await Coupon_1.default.findOne({
                     userId: authReq.user.userId,
                     source: 'newsletter',
-                    isUsed: true
+                    isUsed: true,
                 });
                 if (usedNewsletterCoupon) {
                     return res.status(400).json(new response_1.ApiResponse(false, 'You have already used a 10% off welcome code (only 1 allowed per user in a lifetime)', null, 400));
                 }
             }
         }
-        if (new Date() > coupon.expiresAt) {
-            return res.status(400).json(new response_1.ApiResponse(false, 'Coupon expired', null, 400));
+        // Req 12.1–12.3 — run full validation algorithm before persisting redemption
+        const validationResult = computeCouponDiscount(coupon, orderAmount, cartItems);
+        if (!validationResult.valid) {
+            return res.status(400).json(new response_1.ApiResponse(false, validationResult.reason, null, 400));
         }
+        // Req 12.2 — increment usageCount on every successful redemption
         coupon.isUsed = true;
         coupon.usedAt = new Date();
+        coupon.usageCount = (coupon.usageCount ?? 0) + 1;
         if (orderId && typeof orderId === 'string' && orderId.length > 0) {
             coupon.usedOrderId = new mongoose_1.default.Types.ObjectId(orderId);
         }
@@ -182,7 +233,16 @@ router.post('/apply', auth_1.verifyToken, async (req, res) => {
             coupon.userId = new mongoose_1.default.Types.ObjectId(authReq.user.userId);
         }
         await coupon.save();
-        return res.status(200).json(new response_1.ApiResponse(true, 'Coupon applied successfully', coupon));
+        return res.status(200).json(new response_1.ApiResponse(true, 'Coupon applied successfully', {
+            code: coupon.code,
+            discountType: coupon.discountType,
+            discountValue: coupon.discountValue,
+            maxDiscount: coupon.maxDiscount,
+            minOrderAmount: coupon.minOrderAmount,
+            categoryRestrictions: coupon.categoryRestrictions ?? [],
+            usageCount: coupon.usageCount,
+            discountAmount: validationResult.discountAmount,
+        }));
     }
     catch (error) {
         return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to apply coupon', null, 500));
@@ -219,23 +279,60 @@ router.get('/admin/all', auth_1.verifyToken, auth_1.verifyAdmin, async (req, res
  */
 router.post('/admin/create', auth_1.verifyToken, auth_1.verifyAdmin, async (req, res) => {
     try {
-        const { email, discountType, discountValue, minOrderAmount, maxDiscount, expiresInDays, source, maxUses } = req.body;
-        const code = generateUniqueCode('MSVIP');
-        const coupon = await Coupon_1.default.create({
+        const { error, value } = adminCreateCouponSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+        if (error) {
+            return res.status(400).json({ success: false, message: error.details[0].message });
+        }
+        const { code: customCode, email, discountType, discountValue, minOrderAmount, maxDiscount, expiresInDays, source, maxUses, categoryRestrictions, } = value;
+        // Use admin-provided code, or auto-generate one
+        let code;
+        if (customCode) {
+            // Check if code already exists
+            const existing = await Coupon_1.default.findOne({ code: customCode.toUpperCase().trim() });
+            if (existing) {
+                return res.status(400).json(new response_1.ApiResponse(false, 'Coupon code already exists', null, 400));
+            }
+            code = customCode.toUpperCase().trim();
+        }
+        else {
+            code = generateUniqueCode('MSVIP');
+        }
+        const couponData = {
             code,
-            email: email || 'admin@matasreesuper.com',
+            email: email || '',
             discountType: discountType || 'percentage',
-            discountValue: discountValue || 10,
+            discountValue: discountValue ?? 10,
             minOrderAmount: minOrderAmount || 0,
             maxDiscount: maxDiscount || 0,
             maxUses: maxUses || 0,
             expiresAt: new Date(Date.now() + (expiresInDays || 30) * 24 * 60 * 60 * 1000),
             source: source || 'admin',
-        });
+        };
+        // Only set categoryRestrictions when explicitly provided (Req 12.3)
+        if (Array.isArray(categoryRestrictions) && categoryRestrictions.length > 0) {
+            couponData.categoryRestrictions = categoryRestrictions;
+        }
+        const coupon = await Coupon_1.default.create(couponData);
         return res.status(201).json(new response_1.ApiResponse(true, 'Coupon created', coupon));
     }
     catch (error) {
         return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to create coupon', null, 500));
+    }
+});
+/**
+ * Admin: Delete a coupon
+ */
+router.delete('/admin/:id', auth_1.verifyToken, auth_1.verifyAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const coupon = await Coupon_1.default.findByIdAndDelete(id);
+        if (!coupon) {
+            return res.status(404).json(new response_1.ApiResponse(false, 'Coupon not found', null, 404));
+        }
+        return res.status(200).json(new response_1.ApiResponse(true, 'Coupon deleted successfully'));
+    }
+    catch (error) {
+        return res.status(500).json(new response_1.ApiResponse(false, error.message || 'Failed to delete coupon', null, 500));
     }
 });
 // New route: Generate a unique newsletter coupon for a user (10% off, one-time use)

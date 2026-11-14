@@ -16,7 +16,7 @@ const categorySchema = Joi.object({
  */
 export const getCategories = async (req: any, res: Response) => {
   try {
-    const categories = await Category.find().sort({ name: 1 });
+    const categories = await Category.find().sort({ name: 1 }).lean();
     res.status(200).json(new ApiResponse(true, 'Categories fetched', categories));
   } catch (error: any) {
     res.status(500).json(new ApiResponse(false, error.message || 'Failed to fetch categories', null, 500));
@@ -28,7 +28,7 @@ export const getCategories = async (req: any, res: Response) => {
  */
 export const getCategoryById = async (req: any, res: Response) => {
   try {
-    const category = await Category.findById(req.params.id);
+    const category = await Category.findById(req.params.id).lean();
     if (!category) {
       return res.status(404).json(new ApiResponse(false, 'Category not found', null, 404));
     }

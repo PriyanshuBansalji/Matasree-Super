@@ -29,6 +29,12 @@ router.get('/my-code', verifyToken, getMyCode as any);
 router.get('/history', verifyToken, getReferralHistory as any);
 
 /**
+ * GET /api/referrals or /api/referral
+ * Returns all referrals the logged-in user has made (alias for history).
+ */
+router.get('/', verifyToken, getReferralHistory as any);
+
+/**
  * POST /api/referral/apply
  * Body: { code: string }
  * Applies a referral code on behalf of the authenticated user.

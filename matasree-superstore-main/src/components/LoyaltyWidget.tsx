@@ -28,7 +28,7 @@ const LoyaltyWidget = ({
   orderSubtotal = 0,
   onRedeemSuccess,
 }: LoyaltyWidgetProps) => {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, token } = useAuthStore();
 
   const [balance, setBalance] = useState<LoyaltyBalance | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(true);
@@ -41,7 +41,7 @@ const LoyaltyWidget = ({
   const [appliedDiscount, setAppliedDiscount] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !token) return;
 
     const fetchBalance = async () => {
       setBalanceLoading(true);
@@ -58,10 +58,10 @@ const LoyaltyWidget = ({
     };
 
     fetchBalance();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, token]);
 
-  // Guard: only render for authenticated users
-  if (!isAuthenticated) return null;
+  // Guard: only render for authenticated users with active token
+  if (!isAuthenticated || !token) return null;
 
   const handleRedeem = async () => {
     if (!balance || pointsInput < 1) return;

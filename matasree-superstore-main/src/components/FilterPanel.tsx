@@ -36,12 +36,16 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import ProductCard from '@/components/ProductCard';
+import { LazyRender } from '@/components/performance/LazyRender';
 import { apiClient } from '@/services/api';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const WEIGHT_OPTIONS = ['100g', '250g', '500g', '1kg', '2kg'] as const;
-type WeightOption = (typeof WEIGHT_OPTIONS)[number];
+// Common weight options shown as filter chips.
+// Since weight is now free-form, this is a curated display list.
+// Users can also search by typing a weight in the search bar.
+const WEIGHT_OPTIONS = ['50g', '100g', '200g', '250g', '500g', '1kg', '2kg', '5kg'] as const;
+type WeightOption = string;
 
 const MIN_PRICE = 0;
 const MAX_PRICE = 99999;
@@ -806,7 +810,9 @@ const FilterPanel = ({
                 className="animate-slide-up"
                 style={{ animationDelay: `${Math.min(index * 0.04, 0.4)}s` }}
               >
-                <ProductCard product={product} />
+                <LazyRender height={380}>
+                  <ProductCard product={product} />
+                </LazyRender>
               </div>
             ))}
           </div>

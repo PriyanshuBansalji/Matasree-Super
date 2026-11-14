@@ -55,14 +55,20 @@ const orderSchema = new mongoose_1.Schema({
             price: Number,
             quantity: Number,
             image: String,
+            weight: String,
         },
     ],
     totalAmount: {
         type: Number,
         required: true,
     },
+    shippingCharge: {
+        type: Number,
+        default: 0,
+    },
     shippingAddress: {
         name: String,
+        fullName: String,
         addressLine1: String,
         addressLine2: String,
         city: String,
@@ -77,13 +83,15 @@ const orderSchema = new mongoose_1.Schema({
     },
     paymentStatus: {
         type: String,
-        enum: ['pending', 'paid', 'failed'],
+        enum: ['pending', 'paid', 'failed', 'refunded'],
         default: 'pending',
     },
     paymentId: String,
+    razorpayOrderId: String,
+    razorpayPaymentId: String,
     orderstatus: {
         type: String,
-        enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'],
+        enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded'],
         default: 'pending',
     },
     couponCode: {
@@ -93,6 +101,10 @@ const orderSchema = new mongoose_1.Schema({
         type: Number,
         default: 0,
         min: 0,
+    },
+    stockReservedAt: {
+        type: Date,
+        default: null,
     },
     loyaltyPointsEarned: {
         type: Number,
@@ -107,5 +119,7 @@ const orderSchema = new mongoose_1.Schema({
 // Indexes for common query patterns
 orderSchema.index({ userId: 1, createdAt: -1 }, { background: true });
 orderSchema.index({ orderstatus: 1 }, { background: true });
+orderSchema.index({ userId: 1, orderstatus: 1 }, { background: true });
+orderSchema.index({ createdAt: -1, orderstatus: 1 }, { background: true });
 exports.default = mongoose_1.default.model('Order', orderSchema);
 //# sourceMappingURL=Order.js.map

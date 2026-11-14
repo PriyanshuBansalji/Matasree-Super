@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ChevronLeft, Search, X, Users } from 'lucide-react';
+import { ChevronLeft, Search, X, Users, Crown, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import PageHelmet from '@/components/PageHelmet';
 
@@ -45,7 +45,7 @@ const AdminUsers = () => {
   const [filterRole, setFilterRole] = useState('all');
 
   useEffect(() => {
-    if (!user?.isAdmin && user?.role !== 'admin') {
+    if (user?.role !== 'admin') {
       navigate('/');
       return;
     }
@@ -296,7 +296,7 @@ const AdminUsers = () => {
                                 : 'bg-blue-100 text-blue-800'
                                 }`}
                             >
-                              {u.role === 'admin' ? '👑' : '👤'}
+                              {u.role === 'admin' ? <Crown className="w-3.5 h-3.5 inline mr-1" /> : <UserIcon className="w-3.5 h-3.5 inline mr-1" />}
                               {u.role || 'customer'}
                             </span>
                           </TableCell>
